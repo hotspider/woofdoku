@@ -59,6 +59,11 @@
     }).then(function (man) {
       Assets.manifest = man;
       Assets.version = man.version || '';
+      // every image is also a CSS variable (absolute URL): ui/btn_green -> --ui-btn_green
+      var rootStyle = document.documentElement.style;
+      Object.keys(man.images).forEach(function (k) {
+        try { rootStyle.setProperty('--' + k.replace(/\//g, '-'), 'url("' + new URL(withVersion(man.images[k].file), location.href).href + '")'); } catch (e) {}
+      });
       var jobs = [], total = 0, loaded = 0;
       function add(meta, run) { var w = meta.bytes || 20000; total += w; jobs.push({ w: w, run: run }); }
       add({ bytes: 30000 }, function (done) {

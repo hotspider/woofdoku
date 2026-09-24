@@ -84,6 +84,7 @@
     $('g-diff').title = T('diff_' + B.diff);
     $('g-difflbl').textContent = (B.boss ? T('boss') + ' · ' : '') + T('diff_' + B.diff);
     $('screen-game').classList.toggle('boss', B.boss);
+    $('g-ribbon').className = 'ribbon ' + (S.mode === 'daily' ? 'purple' : B.boss ? 'pink' : 'blue');
   }
   function bubble(text, o) {
     o = o || {};
@@ -129,6 +130,7 @@
     Snd.play(after ? 'mark' : 'unmark');
     var e = { cells: [i], before: [before], after: [after] };
     pushUndo(e);
+    if (S.tutorial) coachSoon(DOUBLE * 1000 + 60);
     return e;
   }
 
@@ -165,7 +167,7 @@
     d.entry.cells.push(i); d.entry.before.push(before); d.entry.after.push(after);
     Snd.play('paint');
   }
-  function onDragEnd() { if (S && S.drag) { pushUndo(S.drag.entry); S.drag = null; } }
+  function onDragEnd() { if (S && S.drag) { pushUndo(S.drag.entry); S.drag = null; if (S.tutorial) coachSoon(); } }
 
   function undo() {
     if (!S || S.over || S.lock) return;
@@ -178,6 +180,7 @@
       setMark(i, e.before[k]);
     }
     Snd.play('undo'); renderTools();
+    if (S.tutorial) coachSoon();
   }
   function clearMarks() {
     if (!S || S.over || S.lock) return;
@@ -186,6 +189,7 @@
     for (var i = 0; i < S.marks.length; i++) if (S.marks[i] === 1) { e.cells.push(i); e.before.push(1); e.after.push(0); setMark(i, 0); }
     if (!e.cells.length) return;
     pushUndo(e); Snd.play('clear');
+    if (S.tutorial) coachSoon();
   }
 
   function conflictReason(i, j) {
@@ -217,19 +221,13 @@
     Fx.burst(p.x, p.y, { n: 12, shapes: ['heart', 'paw', 'sparkle', 'dot'], colors: [col.dark, col.base, '#ffffff', '#ffd257'], speed: 240, gravity: 300, life: 0.8, size: 7 });
     Fx.ring(p.x, p.y, '#ffffff', bv.cellSize() * 0.9, 0.45);
     Store.data.stats.pups++;
-    // cross out everything this pup rules out
-    if (Store.data.settings.automark || S.tutorial) {
-      var n = B.n, r0 = (i / n) | 0, c0 = i % n, any = false;
-      pb.attack[i].forEach(function (q) {
-        if (S.pups[q] || S.marks[q] === 2) return;
-        var dist = Math.max(Math.abs(((q / n) | 0) - r0), Math.abs(q % n - c0));
-        setMark(q, 2, 0.08 + dist * 0.045); any = true;
-      });
-      if (any) setTimeout(function () { Snd.play('automark'); }, 90);
-    }
+    // no automatic crosses: ruling cells out is the player's job (Sniff / Sweep can help)
     S.lastTap = null;
     if (k === B.n) { win(); return; }
-    if (S.tutorial) setTimeout(coach, 700);
+    if (S.tutorial) {
+      if (k === 1) { S.tutStage = 'mark'; S.tutPup = i; S.tutMark = pb.attack[i].filter(function (q) { return !S.pups[q]; }); }
+      setTimeout(coach, 650);
+    }
   }
 
   function wrong(i) {
@@ -326,6 +324,10 @@
         st.elim.forEach(function (q, k) { setMark(q, 2, d + 0.3 + k * 0.04); });
         break;
     }
+    // cells in the highlighted area that a pup already rules out get crossed too, so the board matches the explanation
+    var att = {};
+    for (var p = 0; p < S.pups.length; p++) if (S.pups[p]) pb.attack[p].forEach(function (q) { att[q] = 1; });
+    cells.forEach(function (q, k) { if (att[q] && !S.marks[q] && !S.pups[q] && q !== st.place) setMark(q, 2, d + k * 0.02); });
     bubble(text, { face: 'pup/beagle_idle' });
     void n;
     return true;
@@ -371,26 +373,46 @@
   }
 
   // ------------------------------------------------------------------ tutorial coach (level 1)
-  var hand = null;
-  function showHand(i) {
+  // Stage 1: place the first pup. Stage 2: cross out every cell it rules out (teaches ✕ by tapping /
+  // dragging). Stage 3+: the coach points at each remaining forced spot.
+  var hand = null, coachTimer = 0;
+  function showHand(i, single) {
     if (!hand) hand = $('g-hand');
     if (i == null) { hand.classList.remove('on'); return; }
     var c = bv.cellCenter(i), r = bv.cv.getBoundingClientRect(), a = $('screen-game').getBoundingClientRect();
     hand.style.left = (c.x + r.left - a.left) + 'px'; hand.style.top = (c.y + r.top - a.top) + 'px';
+    hand.classList.toggle('one', !!single);
     hand.classList.add('on');
   }
+  function coachSoon(ms) { clearTimeout(coachTimer); coachTimer = setTimeout(coach, ms || 160); }
   function coach() {
     if (!S || !S.tutorial || S.over) return;
-    var st = Puzzle.nextStep(B.n, B.reg, S.pups, S.marks, B.sol);
-    if (!st) return;
-    if (st.place == null) { // tutorial forces auto-cross, so only placements remain; apply anything else silently
-      (st.elim || []).forEach(function (q) { setMark(q, 2); });
-      if (st.t === 'wrongmark') setMark(st.cell, 0);
-      return coach();
+    if (S.tutStage === 'mark') {
+      var todo = S.tutMark.filter(function (q) { return !S.marks[q] && !S.pups[q]; });
+      if (todo.length) {
+        bv.hint({ cells: S.tutMark.concat([S.tutPup]), mark: todo });
+        bubble(T('tut_mark'), { face: 'pup/corgi_idle' });
+        showHand(todo[0], true);
+        return;
+      }
+      S.tutStage = 'place';
+      Snd.play('reward');
     }
+    // cells ruled out by pups count as crossed out from here on (the lesson has been learned)
+    var virt = S.marks.slice();
+    for (var p = 0; p < S.pups.length; p++) if (S.pups[p]) pb.attack[p].forEach(function (q) { if (!virt[q]) virt[q] = 2; });
+    var st = null;
+    for (var guard = 0; guard < 20; guard++) {
+      st = Puzzle.nextStep(B.n, B.reg, S.pups, virt, B.sol);
+      if (!st) return;
+      if (st.t === 'wrongmark') { setMark(st.cell, 0); virt[st.cell] = 0; bv.glowCells([st.cell], 'rgba(255,120,120,0.8)', 0.6); continue; }
+      if (st.place != null) break;
+      (st.elim || []).forEach(function (q) { virt[q] = 2; });
+    }
+    if (!st || st.place == null) return;
     var first = pupCount() === 0;
     bv.hint({ cells: unitCells(st.unit), target: st.place });
-    bubble(first ? T('tut_1') : cap(T('tut_next', { unit: unitName(st.unit) })), { face: 'pup/corgi_joy' });
+    bubble(first ? T('tut_1') : (S.tutStage === 'place' && pupCount() === 1 ? T('tut_marked') + ' ' : '') + cap(T('tut_next', { unit: unitName(st.unit) })), { face: 'pup/corgi_joy' });
     showHand(st.place);
   }
 

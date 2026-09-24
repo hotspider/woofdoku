@@ -299,9 +299,11 @@
     var s = new State(b);
     for (i = 0; i < b.N; i++) if (pups[i]) { s.pup[i] = 1; s.cand[i] = 0; }
     for (i = 0; i < b.N; i++) if (marks[i]) s.cand[i] = 0;
-    var st = tClear(b, s);
-    if (st) { st.t = 'mark'; return st; }
-    // cells the player has not crossed out but logic already rules out count as open candidates
+    var st;
+    if (opts.markStep) { st = tClear(b, s); if (st) { st.t = 'mark'; return st; } }
+    // cells a pup rules out count as crossed out even if the player has not marked them yet,
+    // so the hint is always the next real deduction
+    for (i = 0; i < b.N; i++) if (pups[i]) placePup(b, s, i);
     st = findStep(b, s, 6);
     if (st && st.place != null && !sol[st.place]) st = null; // should never happen
     if (st && st.elim) for (i = 0; i < st.elim.length; i++) if (sol[st.elim[i]]) { st = null; break; }

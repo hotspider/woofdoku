@@ -13,11 +13,13 @@
   function chapterOf(levelIndex) { return Math.min(C.CHAPTERS.length - 1, Math.floor(levelIndex / C.CHAPTER_SIZE)); }
   function breedName(id) { return I18n.breed(id); }
   function itemsHtml(items) {
-    return items.map(function (it) {
-      if (it.coins) return '<span class="prize"><img src="' + url('icon/coin') + '" alt="">' + it.coins + '</span>';
-      return '<span class="prize"><img src="' + url('icon/' + it.booster) + '" alt="">×' + (it.n || 1) + '</span>';
+    return items.map(function (it, k) {
+      var ic = it.coins ? 'icon/coin' : 'icon/' + it.booster;
+      return '<span class="prize" style="animation-delay:' + (k * 0.12) + 's"><img src="' + url(ic) + '" alt=""><span class="st">' + (it.coins ? it.coins : '×' + (it.n || 1)) + '</span></span>';
     }).join('');
   }
+  // button content: optional icon + stroked label
+  function bh(icon, label) { return '<span class="row">' + (icon ? '<img class="ico" alt="" src="' + url(icon) + '">' : '') + (label ? '<span class="st">' + esc(label) + '</span>' : '') + '</span>'; }
   function itemText(it) { return it.coins ? T('coins_n', { n: it.coins }) : T('booster_n', { n: it.n || 1, name: T(it.booster) }); }
 
   // ------------------------------------------------------------------ screens
@@ -53,7 +55,7 @@
   var shownCoins = null;
   function refreshCoins(animate) {
     var target = Store.data.coins;
-    var els = document.querySelectorAll('.pill.coins .val');
+    var els = document.querySelectorAll('.coinbar.coins .val');
     if (!animate || shownCoins == null) { shownCoins = target; els.forEach(function (e) { e.textContent = target; }); return; }
     var from = shownCoins, t0 = performance.now();
     shownCoins = target;
@@ -62,11 +64,11 @@
       els.forEach(function (e) { e.textContent = v; });
       if (k < 1) requestAnimationFrame(step);
     })(t0);
-    document.querySelectorAll('.pill.coins').forEach(function (p) { p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); });
+    document.querySelectorAll('.coinbar.coins').forEach(function (p) { p.classList.remove('bump'); void p.offsetWidth; p.classList.add('bump'); });
   }
   // coins fly from a point to the visible coin pill, then the counter rolls up
   function flyCoins(from, amount) {
-    var pill = document.querySelector('.screen.on .pill.coins');
+    var pill = document.querySelector('.screen.on .coinbar.coins');
     if (!pill || !from) { refreshCoins(true); return; }
     var to = Fx.center(pill), n = Math.min(10, 3 + Math.floor(amount / 20));
     Snd.play('coins');
@@ -79,8 +81,8 @@
     stack.forEach(function (m) { m.el.style.display = 'none'; });
     var el = document.createElement('div');
     el.className = 'dlg ' + (o.cls || '');
-    el.innerHTML = (o.title ? '<div class="ribbon ' + (o.color || '') + '">' + esc(o.title) + '</div>' : '') +
-      (o.close !== false ? '<button class="x" aria-label="' + T('close') + '"><img alt="" src="' + url('icon/close') + '"></button>' : '') +
+    el.innerHTML = (o.title ? '<div class="ribbon ' + (o.color || 'pink') + '"><span class="st">' + esc(o.title) + '</span></div>' : '') +
+      (o.close !== false ? '<button class="x rnd red" aria-label="' + T('close') + '"><img alt="" src="' + url('icon/close') + '"></button>' : '') +
       '<div class="body"></div><div class="btns"></div>';
     var body = el.querySelector('.body');
     if (typeof o.body === 'string') body.innerHTML = o.body; else if (o.body) body.appendChild(o.body);
@@ -102,7 +104,7 @@
     (o.buttons || []).forEach(function (b) {
       var btn = document.createElement('button');
       btn.className = 'btn ' + (b.cls || 'green');
-      btn.innerHTML = b.html || esc(b.label);
+      btn.innerHTML = b.html || '<span class="st">' + esc(b.label) + '</span>';
       btn.addEventListener('click', function () { Snd.unlock(); Snd.play('tap'); b.onClick(h, btn); });
       bt.appendChild(btn);
     });
@@ -117,7 +119,7 @@
   }
   function closeAll() { stack.slice().forEach(function (m) { m.onClose = null; m.close(true); }); }
   function confirmBox(text, yes) {
-    modal({ title: T('settings'), color: 'orange', body: '<p>' + esc(text) + '</p>', buttons: [
+    modal({ title: T('reset'), color: 'pink', body: '<p>' + esc(text) + '</p>', buttons: [
       { label: T('no'), cls: 'gray', onClick: function (h) { h.close(); } },
       { label: T('yes'), cls: 'pink', onClick: function (h) { h.close(); yes(); } }
     ] });
@@ -179,47 +181,110 @@
   }
   setInterval(function () { if (screen === 'home' && !stack.length) { var b = $('f-free'), fr = freeReadyIn(); b.querySelector('.lbl').textContent = fr > 0 ? fmtMs(fr) : T('free_coins'); var bd = b.querySelector('.badge'); bd.textContent = fr <= 0 ? '+' + C.FREE_COINS : ''; bd.classList.toggle('on', fr <= 0); } }, 1000);
 
-  // ------------------------------------------------------------------ level map
+  // ------------------------------------------------------------------ level map (winding path, level 1 at the bottom)
   var CH_PUP = {}; // chapter -> pup unlocked inside it
   Object.keys(C.PUP_UNLOCK).forEach(function (id) { CH_PUP[chapterOf(C.PUP_UNLOCK[id] - 1)] = id; });
+  // keep in sync with MAP_DECO in tools/export-assets.mjs
+  var MAP_DECO = {
+    backyard: ['tree', 'bush', 'flowers', 'doghouse', 'bone', 'ball'], park: ['tree2', 'bench', 'balloon', 'bush', 'flowers', 'frisbee'],
+    beach: ['umbrella', 'castle', 'shell', 'beachball', 'bone', 'shell'], autumn: ['autumntree', 'pumpkin', 'mushroom', 'leaves', 'redtree', 'pumpkin'],
+    snow: ['pine', 'snowman', 'snowbush', 'icehouse', 'pine', 'bone'], night: ['nightpine', 'lantern', 'litdoghouse', 'stars', 'nightpine', 'moonbone']
+  };
+  var MAP_BG = { backyard: ['#a8e58a', '#c9f2ad'], park: ['#8fdcb0', '#c2f1d5'], beach: ['#f6d58f', '#fff0c6'], autumn: ['#f3bd7e', '#ffe2b8'], snow: ['#cfe2fb', '#f4f9ff'], night: ['#3f3b86', '#6c64bc'] };
+  var MAP_RIB = ['green', 'blue', 'orange', 'pink', 'blue', 'purple'];
+  var STEP = 94, HEAD = 150, PAD_B = 90, PAD_T = 110;
+  function mapGeom(W) {
+    var A = Math.min(W * 0.28, 120), secH = C.CHAPTER_SIZE * STEP + HEAD, H = PAD_B + C.CHAPTERS.length * secH + PAD_T, pts = [];
+    for (var L = 1; L <= C.LEVELS; L++) {
+      var ch = chapterOf(L - 1), j = (L - 1) % C.CHAPTER_SIZE;
+      var yb = PAD_B + ch * secH + HEAD + j * STEP;
+      pts.push({ L: L, x: W / 2 + A * Math.sin((L - 1) * 0.72), y: H - yb });
+    }
+    return { W: W, H: H, secH: secH, A: A, pts: pts };
+  }
+  function roadPath(p) {
+    // Catmull-Rom through the nodes, extended past both ends
+    var q = [{ x: p[0].x, y: p[0].y + 200 }].concat(p).concat([{ x: p[p.length - 1].x, y: p[p.length - 1].y - 200 }]);
+    var d = 'M' + q[0].x.toFixed(1) + ' ' + q[0].y.toFixed(1);
+    for (var i = 0; i < q.length - 1; i++) {
+      var p0 = q[Math.max(0, i - 1)], p1 = q[i], p2 = q[i + 1], p3 = q[Math.min(q.length - 1, i + 2)];
+      d += ' C' + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + ' ' + (p1.y + (p2.y - p0.y) / 6).toFixed(1) + ' ' + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + ' ' + (p2.y - (p3.y - p1.y) / 6).toFixed(1) + ' ' + p2.x.toFixed(1) + ' ' + p2.y.toFixed(1);
+    }
+    return d;
+  }
+  function seededRnd(seed) { var a = seed | 0; return function () { a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   function renderMap() {
-    var d = Store.data, list = $('map-list'), html = '';
+    var d = Store.data, list = $('map-list'), W = $('map-scroll').clientWidth || 390, g = mapGeom(W), html = '', ch, k;
     $('m-title').textContent = T('levels');
     $('m-stars').querySelector('img').src = url('icon/star');
     $('m-stars').querySelector('.val').textContent = Store.totalStars();
-    $('m-bg').style.backgroundImage = 'url(' + url('bg/' + C.CHAPTERS[chapterOf(Math.min(C.LEVELS, d.level) - 1)]) + ')';
-    for (var ch = 0; ch < C.CHAPTERS.length; ch++) {
-      var a = ch * C.CHAPTER_SIZE, b = Math.min(C.LEVELS, a + C.CHAPTER_SIZE), locked = d.level <= a, st = 0;
-      for (var L = a + 1; L <= b; L++) st += d.stars[L] | 0;
-      var pup = CH_PUP[ch], pupHtml = '';
-      if (pup) pupHtml = '<img class="pupnew" alt="" src="' + url('pup/' + pup + (d.pups.indexOf(pup) >= 0 ? '_joy' : '_locked')) + '">';
-      html += '<div class="chapter' + (locked ? ' locked' : '') + '" data-ch="' + ch + '"><div class="banner" style="background-image:url(' + url('banner/' + C.CHAPTERS[ch]) + ')">' +
-        '<span class="no">' + esc(T('chapter', { n: ch + 1 })) + '</span><span class="nm">' + esc(T('ch_' + C.CHAPTERS[ch])) + '</span>' +
-        '<span class="st"><img alt="" src="' + url('icon/star') + '">' + st + ' / ' + (b - a) * 3 + '</span>' + pupHtml +
-        (locked ? '<div class="lock-msg"><img alt="" src="' + url('icon/lock') + '">' + esc(T('locked_chapter', { n: a })) + '</div>' : '') + '</div>';
-      if (!locked) {
-        html += '<div class="levels">';
-        for (L = a + 1; L <= b; L++) {
-          var s = d.stars[L] | 0, cur = L === d.level, lk = L > d.level, boss = L % 10 === 0;
-          html += '<button class="lv' + (s ? ' done' : '') + (cur ? ' cur' : '') + (lk ? ' lock' : '') + (boss ? ' boss' : '') + '" data-l="' + L + '">' +
-            (boss && !lk ? '<img class="crown" alt="" src="' + url('icon/crown') + '">' : '') +
-            (lk ? '<img class="lk" alt="" src="' + url('icon/lock') + '">' : '<span>' + L + '</span>') +
-            (!lk ? '<span class="stars">' + [1, 2, 3].map(function (k) { return '<img alt="" src="' + url(k <= s ? 'icon/star' : 'icon/star_empty') + '">'; }).join('') + '</span>' : '') +
-            (cur ? '<img class="pupmark" alt="" src="' + url('pup/corgi_joy') + '">' : '') + '</button>';
-        }
-        html += '</div>';
+    list.style.height = g.H + 'px';
+    // chapter grounds
+    for (ch = 0; ch < C.CHAPTERS.length; ch++) {
+      var name = C.CHAPTERS[ch], top = g.H - PAD_B - (ch + 1) * g.secH - (ch === C.CHAPTERS.length - 1 ? PAD_T : 0), h = g.secH + (ch === 0 ? PAD_B : 0) + (ch === C.CHAPTERS.length - 1 ? PAD_T : 0);
+      var bgc = MAP_BG[name];
+      html += '<div class="mch" style="position:absolute;left:0;right:0;top:' + top + 'px;height:' + h + 'px;background:linear-gradient(' + bgc[1] + ',' + bgc[0] + ');' +
+        'background-image:radial-gradient(circle at 20% 30%, rgba(255,255,255,.22) 0 5px, transparent 6px),radial-gradient(circle at 70% 70%, rgba(255,255,255,.16) 0 4px, transparent 5px),linear-gradient(' + bgc[1] + ',' + bgc[0] + ');background-size:90px 110px,130px 150px,100% 100%"></div>';
+    }
+    // decorations beside the road
+    var rnd = seededRnd(7);
+    function deco(key, dx, dy, sz) {
+      dx = Math.max(sz * 0.42, Math.min(W - sz * 0.42, dx));
+      return '<img class="deco" alt="" src="' + url('map/' + key) + '" style="left:' + dx.toFixed(0) + 'px;top:' + dy.toFixed(0) + 'px;width:' + sz.toFixed(0) + 'px;height:' + sz.toFixed(0) + 'px;margin:' + (-sz).toFixed(0) + 'px 0 0 ' + (-sz / 2).toFixed(0) + 'px">';
+    }
+    var lastKey = {};
+    function pickKey(set, side) {
+      var k = set[(rnd() * set.length) | 0];
+      if (k === lastKey[side]) k = set[(set.indexOf(k) + 1 + ((rnd() * (set.length - 1)) | 0)) % set.length];
+      lastKey[side] = k; return k;
+    }
+    g.pts.forEach(function (p, i) {
+      var set = MAP_DECO[C.CHAPTERS[chapterOf(p.L - 1)]], off = (p.x - W / 2) / g.A, side = off > 0 ? -1 : 1;
+      // big prop on the far side of the road, a small one near the edge when the road is away from it
+      html += deco(pickKey(set, side), W / 2 + side * (W * 0.3 + rnd() * W * 0.08), p.y + 34 + rnd() * 20, 72 + rnd() * 26);
+      if (Math.abs(off) < 0.5 && i % 2) html += deco(pickKey(set, -side), W / 2 - side * (W * 0.42), p.y + 10 + rnd() * 30, 50 + rnd() * 16);
+    });
+    // road
+    var dpath = roadPath(g.pts);
+    html += '<svg class="road" style="position:absolute;left:0;top:0;width:' + W + 'px;height:' + g.H + 'px;z-index:1" viewBox="0 0 ' + W + ' ' + g.H + '">' +
+      '<path d="' + dpath + '" fill="none" stroke="rgba(60,35,15,0.22)" stroke-width="38" stroke-linecap="round" transform="translate(0,5)"/>' +
+      '<path d="' + dpath + '" fill="none" stroke="#8a5a2c" stroke-width="36" stroke-linecap="round"/>' +
+      '<path d="' + dpath + '" fill="none" stroke="#f6dfae" stroke-width="28" stroke-linecap="round"/>' +
+      '<path d="' + dpath + '" fill="none" stroke="#fff8e6" stroke-width="5" stroke-linecap="round" stroke-dasharray="1 17"/></svg>';
+    // nodes
+    g.pts.forEach(function (p) {
+      var L = p.L, s = d.stars[L] | 0, cur = L === d.level, lk = L > d.level, boss = L % 10 === 0;
+      var col = lk ? 'gray' : cur ? 'green' : boss && !s ? 'pink' : 'gold';
+      html += '<button class="node rnd ' + col + (cur ? ' cur' : '') + '" data-l="' + L + '" style="left:' + p.x.toFixed(1) + 'px;top:' + p.y.toFixed(1) + 'px">' +
+        (lk ? '<img class="lk" alt="" src="' + url('icon/lock') + '">' : '<span class="num st">' + L + '</span>') +
+        (!lk && !cur ? '<span class="stars">' + [1, 2, 3].map(function (k2) { return '<img alt="" src="' + url(k2 <= s ? 'icon/star' : 'icon/star_empty') + '">'; }).join('') + '</span>' : '') +
+        (boss ? '<img class="crown" alt="" src="' + url('icon/crown') + '">' : '') +
+        (cur ? '<img class="me" alt="" src="' + url('pup/corgi_joy') + '">' : '') + '</button>';
+    });
+    // chapter headers + locks
+    for (ch = 0; ch < C.CHAPTERS.length; ch++) {
+      var a = ch * C.CHAPTER_SIZE, b = a + C.CHAPTER_SIZE, st = 0, locked = d.level <= a;
+      for (k = a + 1; k <= b; k++) st += d.stars[k] | 0;
+      // centred in the gap between the previous chapter's last level and this chapter's first
+      var hy = g.H - PAD_B - ch * g.secH - (HEAD - STEP) / 2 - 46, pup = CH_PUP[ch];
+      html += '<div class="chead" style="top:' + hy + 'px"><div class="ribbon ' + MAP_RIB[ch] + '"><span class="st">' + esc(T('ch_' + C.CHAPTERS[ch])) + '</span>' +
+        (pup ? '<img class="prz" alt="" src="' + url('pup/' + pup + (d.pups.indexOf(pup) >= 0 ? '_joy' : '_locked')) + '">' : '') + '</div>' +
+        '<div class="sub">' + esc(T('chapter', { n: ch + 1 })) + ' · <img alt="" src="' + url('icon/star') + '">' + st + ' / ' + (b - a) * 3 + '</div></div>';
+      if (locked) {
+        var ltop = g.H - PAD_B - (ch + 1) * g.secH - (ch === C.CHAPTERS.length - 1 ? PAD_T : 0);
+        html += '<div class="mch-lock" style="position:absolute;left:0;right:0;top:' + ltop + 'px;height:' + (g.secH - HEAD + 10 + (ch === C.CHAPTERS.length - 1 ? PAD_T : 0)) + 'px"><div class="lockveil"><img alt="" src="' + url('icon/lock') + '"><span class="st">' + esc(T('locked_chapter', { n: a })) + '</span></div></div>';
       }
-      html += '</div>';
     }
     list.innerHTML = html;
     refreshCoins();
+    return g;
   }
   function goMap() {
     show('map', function () {
       renderMap();
-      var cur = document.querySelector('.lv.cur') || document.querySelector('.chapter:last-child');
+      var cur = document.querySelector('.node.cur') || document.querySelector('.node[data-l="' + C.LEVELS + '"]');
       var sc = $('map-scroll');
-      if (cur) { var r = cur.getBoundingClientRect(), sr = sc.getBoundingClientRect(); sc.scrollTop += r.top - sr.top - sr.height * 0.4; }
+      if (cur) sc.scrollTop = parseFloat(cur.style.top) - sc.clientHeight * 0.58;
     });
   }
 
@@ -234,8 +299,8 @@
   }
   function playDaily() {
     if (dailyDone()) {
-      modal({ title: T('daily_puzzle'), color: 'purple', body: '<img class="bimg" alt="" src="' + url('icon/trophy') + '"><p>' + esc(T('daily_done_today')) + '</p><p class="muted">' + esc(T('streak', { n: Store.data.challenge.streak })) + '</p><p>' + esc(T('come_back')) + '</p>',
-        buttons: [{ label: T('ok'), onClick: function (h) { h.close(); } }] });
+      modal({ title: T('daily_puzzle'), color: 'purple', body: '<div class="glowbox"><img alt="" src="' + url('icon/trophy') + '"></div><p>' + esc(T('daily_done_today')) + '</p><p class="muted">' + esc(T('streak', { n: Store.data.challenge.streak })) + '</p><p>' + esc(T('come_back')) + '</p>',
+        buttons: [{ cls: 'green full', label: T('ok'), onClick: function (h) { h.close(); } }] });
       return;
     }
     var pool = Assets.levels.daily, idx = ((Store.dayNumber() % pool.length) + pool.length) % pool.length;
@@ -280,35 +345,32 @@
     var sess = Game.session(), breeds = [];
     if (sess) { var dbg = Game._debug(); breeds = dbg.B.breeds.slice(0, 3); }
     var isLevel = res.mode === 'level';
-    var body = '<div class="win-pups">' + breeds.map(function (b) { return '<img alt="" src="' + url('pup/' + b + '_joy') + '">'; }).join('') + '</div>' +
-      '<div class="win-stars">' + [0, 1, 2].map(function (k) { return '<img alt="" data-k="' + k + '" src="' + url(k < res.stars ? 'icon/star' : 'icon/star_empty') + '" class="' + (k < res.stars ? '' : 'empty') + '">'; }).join('') + '</div>' +
+    var body = '<div class="win-top"><div class="rays"></div><div class="win-stars">' + [0, 1, 2].map(function (k) { return '<img alt="" data-k="' + k + '" src="' + url(k < res.stars ? 'icon/star' : 'icon/star_empty') + '" class="' + (k < res.stars ? '' : 'empty') + '">'; }).join('') + '</div></div>' +
+      '<div class="win-pups">' + breeds.map(function (b) { return '<img alt="" src="' + url('pup/' + b + '_joy') + '">'; }).join('') + '</div>' +
       '<div class="stat-row"><div class="stat">' + esc(T('time')) + '<b>' + fmtTime(res.time) + '</b></div>' +
-      (isLevel ? '<div class="stat">' + esc(T('best')) + '<b>' + fmtTime(res.best) + '</b>' + (res.newBest ? '<span class="nb">' + esc(T('new_best')) + '</span>' : '') + '</div>' : '<div class="stat">' + esc(T('streak', { n: res.streak })) + '<b>🔥 ' + res.streak + '</b></div>') + '</div>' +
-      '<div class="reward" id="w-reward"><img alt="" src="' + url('icon/coin') + '">+<span>' + res.coins + '</span></div>' +
+      (isLevel ? '<div class="stat">' + esc(T('best')) + '<b>' + fmtTime(res.best) + '</b>' + (res.newBest ? '<span class="nb">' + esc(T('new_best')) + '</span>' : '') + '</div>'
+        : '<div class="stat">' + esc(T('streak', { n: res.streak })) + '<b>🔥 ' + res.streak + '</b></div>') + '</div>' +
+      '<div class="reward" id="w-reward"><img alt="" src="' + url('icon/coin') + '"><span class="st">+<span class="n">' + res.coins + '</span></span></div>' +
       (!isLevel ? '<p class="muted">' + esc(T('come_back')) + '</p>' : '');
-    var doubled = false;
-    var buttons = [];
-    if (res.coins >= 10) buttons.push({ cls: 'purple small', html: '<span class="row"><img class="ico" alt="" src="' + url('icon/ad') + '">' + esc(T('double_it')) + '</span>', onClick: function (h, btn) {
+    var doubled = false, buttons = [];
+    if (res.coins >= 10) buttons.push({ cls: 'purple full', html: bh('icon/ad', T('double_it')), onClick: function (h, btn) {
       if (doubled) return;
       Ads.rewarded('double_coins').then(function (ok) {
         if (!ok) return;
         doubled = true; btn.disabled = true;
         Store.addCoins(res.coins);
-        var sp = h.el.querySelector('#w-reward span'); sp.textContent = res.coins * 2;
+        h.el.querySelector('#w-reward .n').textContent = res.coins * 2;
         var p = Fx.center(h.el.querySelector('#w-reward')); Fx.burst(p.x, p.y, { n: 16, shapes: ['star', 'sparkle'], colors: ['#ffd257', '#fff'], speed: 220, gravity: 200 });
         Snd.play('coins');
       });
     } });
-    buttons.push({ cls: 'gray small', html: '<span class="row"><img class="ico" alt="" src="' + url('icon/retry') + '"></span>', onClick: function (h) { h.onClose = null; h.close(); isLevel ? playLevel(res.index) : goHome(); } });
-    buttons.push({ cls: 'green', label: isLevel ? T('next') : T('ok'), onClick: function (h) { h.onClose = null; h.close(); afterWin(res); } });
+    buttons.push({ cls: 'blue', html: bh('icon/retry', T('retry')), onClick: function (h) { h.onClose = null; h.close(); isLevel ? playLevel(res.index) : goHome(); } });
+    buttons.push({ cls: 'green', html: bh(null, isLevel ? T('next') : T('ok')), onClick: function (h) { h.onClose = null; h.close(); afterWin(res); } });
     var h = modal({
       title: isLevel ? T('level_done', { n: res.L }) : T('daily_done'), color: 'green', body: body, buttons: buttons, cls: 'win',
       onX: function (m) { m.onClose = null; m.close(); afterWin(res, true); }
     });
-    // retry button keeps its natural width
-    var bts = h.el.querySelectorAll('.btns .btn');
-    if (bts.length === 3) { bts[0].style.flex = '1 1 100%'; bts[1].style.flex = '0 0 64px'; }
-    else if (bts.length === 2) bts[0].style.flex = '0 0 64px';
+    if (!isLevel) h.el.querySelectorAll('.btns .btn.blue').forEach(function (b) { b.remove(); });
     Snd.duck(2.5);
     var stars = h.el.querySelectorAll('.win-stars img');
     for (var k = 0; k < res.stars; k++) (function (k) {
@@ -330,22 +392,20 @@
 
   function showFail(mode) {
     var body = '<img class="bimg" alt="" src="' + url('mascot/sad') + '"><p>' + esc(T('continue_d')) + '</p>';
-    var h = modal({
+    modal({
       title: T('continue_q'), color: 'orange', body: body, close: false, cls: 'fail',
       buttons: [
-        { cls: 'orange', html: '<span class="row">' + esc(T('continue_coins')) + ' <img class="ico" alt="" src="' + url('icon/coin') + '">' + C.CONTINUE_PRICE + '</span>', onClick: function (h, btn) {
+        { cls: 'gold full', html: '<span class="row"><span class="st">' + esc(T('continue_coins')) + '</span><img class="ico" alt="" src="' + url('icon/coin') + '"><span class="st">' + C.CONTINUE_PRICE + '</span></span>', onClick: function (h, btn) {
           if (!Store.spend(C.CONTINUE_PRICE)) { toast(T('not_enough')); btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake'); return; }
           refreshCoins(); h.close(); Game.continueRun();
         } },
-        { cls: 'purple', html: '<span class="row"><img class="ico" alt="" src="' + url('icon/ad') + '">' + esc(T('continue_ad')) + '</span>', onClick: function (h) {
+        { cls: 'purple full', html: bh('icon/ad', T('continue_ad')), onClick: function (h) {
           Ads.rewarded('continue').then(function (ok) { if (ok) { h.close(); Game.continueRun(); } });
         } },
-        { cls: 'blue small', label: T('retry'), onClick: function (h) { h.close(); Game.restart(); } },
-        { cls: 'gray small', label: mode === 'daily' ? T('home') : T('levels'), onClick: function (h) { h.close(); mode === 'daily' ? goHome() : goMap(); } }
+        { cls: 'orange', html: bh('icon/home', T('home')), onClick: function (h) { h.close(); goHome(); } },
+        { cls: 'blue', html: bh('icon/retry', T('retry')), onClick: function (h) { h.close(); Game.restart(); } }
       ]
     });
-    var bts = h.el.querySelectorAll('.btns .btn');
-    bts[0].style.flex = bts[1].style.flex = '1 1 100%';
   }
 
   // ------------------------------------------------------------------ rules
@@ -360,21 +420,22 @@
     BoardView.drawMini(cvs[0], { n: 5, reg: RULE_REG, colors: colors, size: 104, pups: [[8, 'corgi']], marks: [5, 6, 7, 9, 3, 13, 18, 23], glow: [5, 6, 7, 9, 3, 13, 18, 23] });
     BoardView.drawMini(cvs[1], { n: 5, reg: RULE_REG, colors: colors, size: 104, pups: [[17, 'shiba']], marks: [6, 7, 11, 12, 13], glow: [6, 7, 11, 12, 13] });
     BoardView.drawMini(cvs[2], { n: 5, reg: RULE_REG, colors: colors, size: 104, pups: [[12, 'pug', 'idle'], [18, 'beagle', 'sad']], red: [6, 7, 8, 11, 13, 16, 17, 18], lines: [[12, 18]] });
-    modal({ title: T('how_to_play'), color: 'blue', body: wrap, buttons: [{ label: T('lets_go'), onClick: function (h) { h.close(); } }], onClose: done });
+    modal({ title: T('how_to_play'), color: 'blue', body: wrap, buttons: [{ cls: 'green full', label: T('lets_go'), onClick: function (h) { h.close(); } }], onClose: done });
   }
 
   // ------------------------------------------------------------------ settings / pause
   function settingsBody(inGame) {
     var s = Store.data.settings, wrap = document.createElement('div');
     var rows = [['music', 'icon/music', T('music')], ['sfx', 'icon/sound', T('sound')], ['vibrate', 'icon/vibrate', T('vibration')],
-      ['automark', 'icon/auto', T('auto_x'), T('auto_x_d')], ['patterns', 'icon/paw', T('patterns'), T('patterns_d')]];
+      ['patterns', 'icon/paw', T('patterns'), T('patterns_d')]];
     var html = '<div class="set-list">' + rows.map(function (r) {
       return '<div class="set-row" data-k="' + r[0] + '"><img alt="" src="' + url(r[1]) + '"><div class="nm">' + esc(r[2]) + (r[3] ? '<small>' + esc(r[3]) + '</small>' : '') + '</div><button class="switch' + (s[r[0]] ? ' on' : '') + '" aria-label="' + esc(r[2]) + '"></button></div>';
     }).join('');
     html += '<div class="set-row"><img alt="" src="' + url('icon/globe') + '"><div class="nm">' + esc(T('language')) + '</div><div class="seg"><button data-l="en" class="' + (I18n.lang === 'en' ? 'on' : '') + '">EN</button><button data-l="zh" class="' + (I18n.lang === 'zh' ? 'on' : '') + '">中文</button></div></div>';
+    html += '<div class="set-row link" data-a="rules"><img alt="" src="' + url('icon/album') + '"><div class="nm">' + esc(T('how_to_play')) + '</div><span class="go">›</span></div>';
+    if (!inGame) html += '<div class="set-row link" data-a="reset"><img alt="" src="' + url('icon/retry') + '"><div class="nm">' + esc(T('reset')) + '</div><span class="go">›</span></div>';
     html += '</div>';
-    if (!inGame) html += '<div class="btns" style="margin-top:12px"><button class="btn blue small" data-a="rules">' + esc(T('how_to_play')) + '</button><button class="btn gray small" data-a="reset">' + esc(T('reset')) + '</button></div><div class="ver">Woofdoku · ' + esc(T('version', { v: (Assets.manifest && Assets.manifest.version) || '' })) + '</div>';
-    else html += '<div style="margin-top:8px"><button class="btn blue small" data-a="rules">' + esc(T('how_to_play')) + '</button></div>';
+    if (!inGame) html += '<div class="ver">Woofdoku · ' + esc(T('version', { v: (Assets.manifest && Assets.manifest.version) || '' })) + '</div>';
     wrap.innerHTML = html;
     wrap.querySelectorAll('.set-row[data-k]').forEach(function (row) {
       row.querySelector('.switch').addEventListener('click', function () {
@@ -384,7 +445,7 @@
         if (k === 'music') Snd.setMusic(s.music);
         if (k === 'sfx') Snd.setSfx(s.sfx);
         if (k === 'vibrate' && s.vibrate) vib(30);
-        if (k === 'patterns' || k === 'automark') Game.refreshHud();
+        if (k === 'patterns') Game.refreshHud();
       });
     });
     wrap.querySelectorAll('.seg button').forEach(function (b) {
@@ -393,7 +454,7 @@
         s.lang = b.getAttribute('data-l'); Store.save(); I18n.set(s.lang);
         applyLang();
         closeAll();
-        if (inGame) { Game.refreshHud(); UI.showPause(); } else openSettings();
+        if (inGame) { Game.refreshHud(); Game.pause(); UI.showPause(); } else openSettings();
       });
     });
     wrap.querySelectorAll('[data-a]').forEach(function (b) {
@@ -411,13 +472,11 @@
     modal({
       title: T('paused'), color: 'orange', body: settingsBody(true), onClose: function () { Game.resume(); },
       buttons: [
-        { cls: 'blue small', label: T('restart'), onClick: function (h) { h.onClose = null; h.close(); Game.restart(); } },
-        { cls: 'gray small', label: Game.session() && Game.session().mode === 'daily' ? T('home') : T('levels'), onClick: function (h) { h.onClose = null; h.close(); var m = Game.session() && Game.session().mode; m === 'daily' ? goHome() : goMap(); } },
-        { cls: 'green', label: T('resume'), onClick: function (h) { h.close(); } }
+        { cls: 'green full', html: bh('icon/play', T('resume')), onClick: function (h) { h.close(); } },
+        { cls: 'orange', html: bh('icon/home', T('home')), onClick: function (h) { h.onClose = null; h.close(); goHome(); } },
+        { cls: 'blue', html: bh('icon/retry', T('restart')), onClick: function (h) { h.onClose = null; h.close(); Game.restart(); } }
       ]
     });
-    var bts = stack[stack.length - 1].el.querySelectorAll('.btns .btn');
-    bts[2].style.flex = '1 1 100%';
   }
   function applyLang() {
     $('rotate-msg').textContent = T('rotate');
@@ -430,8 +489,8 @@
     Game.pause();
     modal({
       title: T('new_booster'), color: 'purple', close: false,
-      body: '<img class="bimg" alt="" src="' + url('icon/' + id) + '"><h3>' + esc(T(id)) + '</h3><p>' + esc(T(id + '_d')) + '</p><p class="muted">' + esc(T('free_gift', { n: C.BOOSTER_GIFT })) + '</p>',
-      buttons: [{ label: T('got_it'), onClick: function (h) { h.close(); } }],
+      body: '<div class="glowbox"><img alt="" src="' + url('icon/' + id) + '"></div><h3 class="st" style="--sc:#33166b">' + esc(T(id)) + '</h3><p>' + esc(T(id + '_d')) + '</p><p class="muted">' + esc(T('free_gift', { n: C.BOOSTER_GIFT })) + '</p>',
+      buttons: [{ cls: 'green full', label: T('got_it'), onClick: function (h) { h.close(); } }],
       onClose: function () { Game.resume(); Snd.play('reward'); if (done) done(); }
     });
   }
@@ -440,19 +499,18 @@
     var price = C.BOOSTER_PRICE[id];
     modal({
       title: T('get_more', { name: T(id) }), color: 'blue',
-      body: '<img class="bimg" alt="" src="' + url('icon/' + id) + '"><p>' + esc(T(id + '_d')) + '</p><div class="pill coins" style="display:inline-flex;margin:4px auto"><img alt="" src="' + url('icon/coin') + '"><span class="val">' + Store.data.coins + '</span></div>',
+      body: '<div class="glowbox"><img alt="" src="' + url('icon/' + id) + '"></div><p>' + esc(T(id + '_d')) + '</p><div class="pricebox"><div class="coinbar"><img class="ci" alt="" src="' + url('icon/coin') + '"><span class="val st">' + Store.data.coins + '</span></div></div>',
       onClose: function () { Game.resume(); },
       buttons: [
-        { cls: 'orange', html: '<span class="row">' + esc(T('buy_for', { n: C.BOOSTER_PACK })) + ' <img class="ico" alt="" src="' + url('icon/coin') + '">' + price + '</span>', onClick: function (h, btn) {
+        { cls: 'gold full', html: '<span class="row"><span class="st">' + esc(T('buy_for', { n: C.BOOSTER_PACK })) + '</span><img class="ico" alt="" src="' + url('icon/coin') + '"><span class="st">' + price + '</span></span>', onClick: function (h, btn) {
           if (!Store.spend(price)) { toast(T('not_enough')); btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake'); return; }
           Store.addBooster(id, C.BOOSTER_PACK); Snd.play('reward'); refreshCoins(); h.close(); if (done) done();
         } },
-        { cls: 'purple', html: '<span class="row"><img class="ico" alt="" src="' + url('icon/ad') + '">' + esc(T('watch_ad_1')) + '</span>', onClick: function (h) {
+        { cls: 'purple full', html: bh('icon/ad', T('watch_ad_1')), onClick: function (h) {
           Ads.rewarded('booster').then(function (ok) { if (ok) { Store.addBooster(id, 1); Snd.play('reward'); h.close(); if (done) done(); } });
         } }
       ]
     });
-    stack[stack.length - 1].el.querySelectorAll('.btns .btn').forEach(function (b) { b.style.flex = '1 1 100%'; });
   }
 
   // ------------------------------------------------------------------ daily gift
@@ -479,13 +537,13 @@
     modal({
       title: T('gift_title'), color: 'green', body: cal,
       buttons: ready ? [
-        { cls: 'purple small', html: '<span class="row"><img class="ico" alt="" src="' + url('icon/ad') + '">' + esc(T('claim_x2')) + '</span>', onClick: function (h) { Ads.rewarded('gift_x2').then(function (ok) { if (ok) claim(h, 2); }); } },
+        { cls: 'purple', html: bh('icon/ad', T('claim_x2')), onClick: function (h) { Ads.rewarded('gift_x2').then(function (ok) { if (ok) claim(h, 2); }); } },
         { cls: 'green', label: T('claim'), onClick: function (h) { claim(h, 1); } }
-      ] : [{ cls: 'green', label: T('ok'), onClick: function (h) { h.close(); } }]
+      ] : [{ cls: 'green full', label: T('ok'), onClick: function (h) { h.close(); } }]
     });
   }
   function showPrizes(title, items, done) {
-    modal({ title: title, color: 'orange', body: '<div class="prizes">' + itemsHtml(items) + '</div>', buttons: [{ label: T('ok'), onClick: function (h) { h.close(); } }], onClose: function () { if (screen === 'home') renderHome(); if (done) done(); } });
+    modal({ title: title, color: 'orange', body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><div class="prizes">' + itemsHtml(items) + '</div>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (h) { h.close(); } }], onClose: function () { if (screen === 'home') renderHome(); if (done) done(); } });
   }
 
   // ------------------------------------------------------------------ lucky wheel
@@ -519,15 +577,15 @@
     var w = Store.data.wheel, today = Store.today();
     if (w.date !== today) { w.date = today; w.free = false; w.ads = 0; Store.save(); }
     var wrap = document.createElement('div');
-    wrap.innerHTML = '<div class="wheel-wrap"><canvas></canvas><svg class="ptr" viewBox="0 0 46 52"><path d="M23 50 L4 12 Q2 4 10 3 L36 3 Q44 4 42 12 Z" fill="#ff5b7f" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg><img class="hub" alt="" src="' + url('icon/paw') + '"></div><p class="muted" id="w-info"></p>';
+    wrap.innerHTML = '<div class="wheel-wrap"><canvas></canvas><svg class="ptr" viewBox="0 0 46 52"><path d="M23 50 L4 12 Q2 4 10 3 L36 3 Q44 4 42 12 Z" fill="#ff5b7f" stroke="#fff" stroke-width="4" stroke-linejoin="round"/></svg><span class="hub rnd gold"><img alt="" src="' + url('icon/paw') + '"></span></div><p class="muted" id="w-info"></p>';
     var cv = wrap.querySelector('canvas'), rot = 0, spinning = false;
     drawWheel(cv, rot, -1);
-    var h = modal({ title: T('wheel_title'), color: 'purple', body: wrap, buttons: [{ cls: 'green', label: T('spin'), onClick: function (hh, btn) { go(btn); } }] });
+    var h = modal({ title: T('wheel_title'), color: 'purple', body: wrap, buttons: [{ cls: 'green full', label: T('spin'), onClick: function (hh, btn) { go(btn); } }] });
     var btn = h.el.querySelector('.btns .btn');
     function label() {
       var free = !w.free, left = C.WHEEL_AD_SPINS - w.ads;
-      btn.innerHTML = free ? esc(T('spin_free')) : '<span class="row"><img class="ico" alt="" src="' + url('icon/ad') + '">' + esc(T('spin_ad')) + '</span>';
-      btn.className = 'btn ' + (free ? 'green' : 'purple');
+      btn.innerHTML = free ? bh(null, T('spin_free')) : bh('icon/ad', T('spin_ad'));
+      btn.className = 'btn full ' + (free ? 'green' : 'purple');
       btn.disabled = !free && left <= 0;
       wrap.querySelector('#w-info').textContent = !free && left <= 0 ? T('no_spins') : !free ? T('spins_left', { n: left }) : '';
     }
@@ -587,7 +645,7 @@
         var id = b.getAttribute('data-id');
         if (d.pups.indexOf(id) < 0) { Snd.play('blocked'); toast(T('locked_pup', { n: C.PUP_UNLOCK[id] })); return; }
         Snd.play('yip', { i: C.ALL_PUPS.indexOf(id) % 6 });
-        modal({ title: breedName(id), color: 'green', body: '<img class="pup-big" alt="" src="' + url('pup/' + id + '_joy') + '"><div class="fact">' + esc(I18n.fact(id)) + '</div>', buttons: [{ label: T('ok'), onClick: function (m) { m.close(); } }] });
+        modal({ title: breedName(id), color: 'green', body: '<div class="glowbox"><img alt="" src="' + url('pup/' + id + '_joy') + '"></div><div class="fact">' + esc(I18n.fact(id)) + '</div>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (m) { m.close(); } }] });
       });
     });
     if (screen === 'home') renderHome();
@@ -597,8 +655,8 @@
     Fx.confetti(90);
     modal({
       title: T('new_pup'), color: 'purple', close: false,
-      body: '<div class="glow-wrap"><img alt="" src="' + url('pup/' + id + '_joy') + '"></div><h3>' + esc(breedName(id)) + '</h3><p>' + esc(T('joined', { name: breedName(id) })) + '</p><div class="fact">' + esc(I18n.fact(id)) + '</div>',
-      buttons: [{ label: T('got_it'), onClick: function (h) { h.close(); } }], onClose: done
+      body: '<div class="glowbox"><img alt="" src="' + url('pup/' + id + '_joy') + '"></div><h3 class="st" style="--sc:#33166b">' + esc(breedName(id)) + '</h3><p>' + esc(T('joined', { name: breedName(id) })) + '</p><div class="fact">' + esc(I18n.fact(id)) + '</div>',
+      buttons: [{ cls: 'green full', label: T('got_it'), onClick: function (h) { h.close(); } }], onClose: done
     });
   }
 
@@ -606,7 +664,7 @@
   function openBox() {
     var d = Store.data;
     if (d.box < C.BOX_STARS) {
-      modal({ title: T('box_title'), color: 'blue', body: '<img class="bimg" alt="" src="' + url('icon/gift') + '"><p>' + esc(T('box_d')) + '</p><p><b>' + esc(T('box_progress', { a: d.box, b: C.BOX_STARS })) + '</b></p>', buttons: [{ label: T('ok'), onClick: function (h) { h.close(); } }] });
+      modal({ title: T('box_title'), color: 'blue', body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><p>' + esc(T('box_d')) + '</p><p><b>' + esc(T('box_progress', { a: d.box, b: C.BOX_STARS })) + '</b></p>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (h) { h.close(); } }] });
       return;
     }
     d.box -= C.BOX_STARS;
@@ -615,8 +673,8 @@
     if (Math.random() < 0.35) items.push({ booster: C.BOOSTERS[(Math.random() * 3) | 0], n: 1 });
     Store.grant(items);
     Snd.play('chest'); vib([20, 40, 20]);
-    var h = modal({ title: T('box_title'), color: 'blue', close: false, body: '<div class="glow-wrap"><img alt="" src="' + url('icon/gift') + '"></div><div class="prizes">' + itemsHtml(items) + '</div>', buttons: [{ label: T('ok'), onClick: function (m) { m.close(); } }], onClose: function () { renderHome(); } });
-    setTimeout(function () { var p = Fx.center(h.el.querySelector('.glow-wrap')); Fx.burst(p.x, p.y, { n: 30, shapes: ['star', 'bone', 'paw', 'sparkle'], speed: 340 }); flyCoins(p, 100); }, 300);
+    var h = modal({ title: T('box_title'), color: 'blue', close: false, body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><div class="prizes">' + itemsHtml(items) + '</div>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (m) { m.close(); } }], onClose: function () { renderHome(); } });
+    setTimeout(function () { var p = Fx.center(h.el.querySelector('.glowbox')); Fx.burst(p.x, p.y, { n: 30, shapes: ['star', 'bone', 'paw', 'sparkle'], speed: 340 }); flyCoins(p, 100); }, 300);
   }
   function freeCoins() {
     var fr = freeReadyIn();
@@ -649,7 +707,7 @@
       Snd.play('yip', { i: 1 }); speech();
     });
     $('map-list').addEventListener('click', function (e) {
-      var b = e.target.closest('.lv'); if (!b) return;
+      var b = e.target.closest('.node'); if (!b) return;
       Snd.unlock();
       var L = +b.getAttribute('data-l');
       if (L > Store.data.level) { Snd.play('blocked'); toast(T('locked_chapter', { n: L - 1 })); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); return; }
@@ -659,7 +717,7 @@
     $('h-logo').src = url('ui/logo');
     $('h-mascot').src = url('mascot/wave');
     $('h-set').querySelector('img').src = url('icon/gear');
-    document.querySelectorAll('.pill.coins img').forEach(function (i) { i.src = url('icon/coin'); });
+    document.querySelectorAll('.coinbar.coins img.ci').forEach(function (i) { i.src = url('icon/coin'); });
     $('m-back').querySelector('img').src = url('icon/home');
     $('g-pause').querySelector('img').src = url('icon/pause');
     $('g-clock').src = url('icon/clock');
@@ -667,7 +725,7 @@
     $('t-clear').querySelector('img').src = url('icon/erase');
     $('t-mode-pup').src = url('pup/corgi_idle');
     $('g-hand').src = url('icon/paw');
-    C.BOOSTERS.forEach(function (id) { var b = $('b-' + id); b.querySelector('.ic img').src = url('icon/' + id); b.querySelector('.ic img.lock').src = url('icon/lock'); });
+    C.BOOSTERS.forEach(function (id) { var b = $('b-' + id); b.querySelector('.slot img.bi').src = url('icon/' + id); b.querySelector('.slot img.lock').src = url('icon/lock'); });
     // hardware back button / swipe-back on Android: stay inside the game
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && stack.length) { var t = stack[stack.length - 1]; if (t.el.querySelector('.x')) t.close(); } });
   }

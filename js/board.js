@@ -13,19 +13,20 @@
 (function () {
   'use strict';
   var TAU = Math.PI * 2;
-  var INK = '#5b3d31';
+  var INK = '#3d2615';
 
+  // one flat colour per yard (dark = ✕ marks and colour-blind symbols)
   var PALETTE = [
-    { base: '#ffbfd3', dark: '#d9507f' }, // 0 pink
-    { base: '#ffcfa3', dark: '#d7782c' }, // 1 peach
-    { base: '#ffec96', dark: '#bf920c' }, // 2 lemon
-    { base: '#bdeba9', dark: '#4a9a37' }, // 3 mint
-    { base: '#a9d8ff', dark: '#3582cc' }, // 4 sky
-    { base: '#d4c3ff', dark: '#7350d2' }, // 5 lilac
-    { base: '#a1e7de', dark: '#23958a' }, // 6 aqua
-    { base: '#ffa39b', dark: '#cc4a41' }, // 7 coral
-    { base: '#ead7b8', dark: '#9c7746' }, // 8 sand
-    { base: '#d0d7e8', dark: '#5f6f8c' }  // 9 cloud
+    { base: '#ffb2ca', dark: '#d2416f' }, // 0 pink
+    { base: '#ffc795', dark: '#cf6c1c' }, // 1 peach
+    { base: '#ffe77e', dark: '#b48607' }, // 2 lemon
+    { base: '#b2e79c', dark: '#3f902c' }, // 3 mint
+    { base: '#9dd3ff', dark: '#2a78c4' }, // 4 sky
+    { base: '#cbb8ff', dark: '#6843cc' }, // 5 lilac
+    { base: '#92e2d6', dark: '#178a7e' }, // 6 aqua
+    { base: '#ff9a91', dark: '#c23d34' }, // 7 coral
+    { base: '#e5cfa6', dark: '#8f6a38' }, // 8 sand
+    { base: '#c7d0e4', dark: '#566584' }  // 9 cloud
   ];
   // how alike two palette colours look (0 = very different)
   var SIM = {};
@@ -97,40 +98,62 @@
   }
 
   // static layer: frame, cells, grid lines, yard borders
-  function drawStatic(x, S, n, reg, colors, patterns) {
-    var m = S * 0.03, G = S - 2 * m, c = G / n, R = Math.max(6, S * 0.045), i, r, k;
+  // wooden frame around the grid; returns the grid geometry
+  function drawFrame(x, S) {
+    var f = S * 0.052, R = S * 0.07, Ri = Math.max(4, S * 0.022), k;
+    rr(x, 0, 0, S, S, R); x.fillStyle = '#4a2a12'; x.fill();
+    var wg = x.createLinearGradient(0, 0, 0, S);
+    wg.addColorStop(0, '#f2b672'); wg.addColorStop(0.5, '#dc9551'); wg.addColorStop(1, '#bf7433');
+    rr(x, S * 0.009, S * 0.009, S * 0.982, S * 0.982, R * 0.88); x.fillStyle = wg; x.fill();
+    // grain in the frame ring only
     x.save();
-    // frame
-    x.shadowColor = 'rgba(110,70,40,0.28)'; x.shadowBlur = S * 0.03; x.shadowOffsetY = S * 0.012;
-    var fg = x.createLinearGradient(0, 0, 0, S);
-    fg.addColorStop(0, '#fffdf7'); fg.addColorStop(1, '#f7e8d2');
-    rr(x, S * 0.004, S * 0.004, S * 0.992, S * 0.985, R + m); x.fillStyle = fg; x.fill();
-    x.shadowColor = 'transparent';
-    rr(x, S * 0.004, S * 0.004, S * 0.992, S * 0.985, R + m); x.lineWidth = Math.max(1.5, S * 0.005); x.strokeStyle = 'rgba(150,100,60,0.35)'; x.stroke();
-    // cells
+    x.beginPath(); x.rect(0, 0, S, S); x.rect(f, f, S - 2 * f, S - 2 * f); x.clip('evenodd');
+    x.strokeStyle = 'rgba(120,60,20,0.28)'; x.lineWidth = Math.max(1, S * 0.0035);
+    function wave(horizontal, pos, ph) {
+      x.beginPath();
+      for (var t = 0; t <= S; t += S / 40) {
+        var o = Math.sin(t / S * 18 + ph) * S * 0.003;
+        if (horizontal) { if (!t) x.moveTo(t, pos + o); else x.lineTo(t, pos + o); } else { if (!t) x.moveTo(pos + o, t); else x.lineTo(pos + o, t); }
+      }
+      x.stroke();
+    }
+    [0.36, 0.66].forEach(function (p, j) { wave(true, f * p, j * 2); wave(true, S - f * p, j * 3 + 1); wave(false, f * p, j + 4); wave(false, S - f * p, j * 2 + 5); });
+    x.restore();
+    rr(x, S * 0.016, S * 0.016, S * 0.968, S * 0.968, R * 0.8); x.lineWidth = Math.max(1.5, S * 0.005); x.strokeStyle = 'rgba(255,235,200,0.55)'; x.stroke();
+    // groove + nails
+    var gw = S * 0.012;
+    rr(x, f - gw, f - gw, S - 2 * f + 2 * gw, S - 2 * f + 2 * gw, Ri + gw); x.fillStyle = '#6a3a17'; x.fill();
+    [[f / 2, f / 2], [S - f / 2, f / 2], [f / 2, S - f / 2], [S - f / 2, S - f / 2]].forEach(function (p) {
+      x.beginPath(); x.arc(p[0], p[1], S * 0.011, 0, TAU); x.fillStyle = '#7a4518'; x.fill();
+      x.beginPath(); x.arc(p[0] - S * 0.003, p[1] - S * 0.003, S * 0.0045, 0, TAU); x.fillStyle = 'rgba(255,236,200,0.85)'; x.fill();
+    });
+    void k;
+    return { m: f, G: S - 2 * f, R: Ri };
+  }
+
+  // static layer: frame, flat yard colours, grid lines, yard borders
+  function drawStatic(x, S, n, reg, colors, patterns) {
+    var fr = drawFrame(x, S), m = fr.m, G = fr.G, c = G / n, R = fr.R, i, r, k;
+    x.save();
     rr(x, m, m, G, G, R); x.clip();
     for (i = 0; i < n * n; i++) {
       r = (i / n) | 0; k = i % n;
       var col = PALETTE[colors[reg[i]]];
       x.fillStyle = col.base; x.fillRect(m + k * c - 0.5, m + r * c - 0.5, c + 1, c + 1);
-      if ((r + k) % 2) { x.fillStyle = 'rgba(255,255,255,0.12)'; x.fillRect(m + k * c, m + r * c, c, c); }
-      var g = x.createLinearGradient(0, m + r * c, 0, m + (r + 1) * c);
-      g.addColorStop(0, 'rgba(255,255,255,0.28)'); g.addColorStop(0.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(120,70,40,0.05)');
-      x.fillStyle = g; x.fillRect(m + k * c, m + r * c, c, c);
       if (patterns) {
-        x.fillStyle = col.dark; x.globalAlpha = 0.32;
+        x.fillStyle = col.dark; x.globalAlpha = 0.35;
         symbol(x, colors[reg[i]], m + k * c + c * 0.2, m + r * c + c * 0.2, c * 0.085);
         x.globalAlpha = 1;
       }
     }
     // thin grid
-    x.strokeStyle = 'rgba(91,61,49,0.16)'; x.lineWidth = Math.max(1, S / 400);
+    x.strokeStyle = 'rgba(70,40,20,0.17)'; x.lineWidth = Math.max(1, S / 380);
     x.beginPath();
     for (k = 1; k < n; k++) { x.moveTo(m + k * c, m); x.lineTo(m + k * c, m + G); x.moveTo(m, m + k * c); x.lineTo(m + G, m + k * c); }
     x.stroke();
     x.restore();
     // yard borders
-    var bw = Math.max(2.2, c * 0.075);
+    var bw = Math.max(2.5, c * 0.085);
     x.strokeStyle = INK; x.lineWidth = bw; x.lineCap = 'round';
     x.beginPath();
     for (i = 0; i < n * n; i++) {
@@ -280,17 +303,33 @@
     function cx(i) { return m + (i % n + 0.5) * c; }
     function cy(i) { return m + (((i / n) | 0) + 0.5) * c; }
 
-    // hint highlight: dim everything except the involved cells
+    // hint highlight: a glowing golden outline around the involved cells (yard colours stay untouched)
     var hs = this.hintSpec;
     if (hs) {
       var ht = t - this.hintT, pulse = 0.5 + 0.5 * Math.sin(ht * 5);
       var inv = {};
       (hs.cells || []).forEach(function (j) { inv[j] = 1; });
       x.save();
-      x.beginPath(); rr(x, m, m, g.G, g.G, g.R); x.clip();
-      x.fillStyle = 'rgba(70,45,35,' + (0.2 * clamp01(ht * 4)) + ')';
-      for (i = 0; i < n * n; i++) if (!inv[i]) x.fillRect(m + (i % n) * c, m + ((i / n) | 0) * c, c, c);
+      x.lineCap = 'round'; x.lineJoin = 'round';
+      x.beginPath();
+      for (i = 0; i < n * n; i++) {
+        if (!inv[i]) continue;
+        var r1 = (i / n) | 0, c1 = i % n, px0 = m + c1 * c, py0 = m + r1 * c;
+        if (r1 === 0 || !inv[i - n]) { x.moveTo(px0, py0); x.lineTo(px0 + c, py0); }
+        if (r1 === n - 1 || !inv[i + n]) { x.moveTo(px0, py0 + c); x.lineTo(px0 + c, py0 + c); }
+        if (c1 === 0 || !inv[i - 1]) { x.moveTo(px0, py0); x.lineTo(px0, py0 + c); }
+        if (c1 === n - 1 || !inv[i + 1]) { x.moveTo(px0 + c, py0); x.lineTo(px0 + c, py0 + c); }
+      }
+      x.shadowColor = 'rgba(255,190,30,0.95)'; x.shadowBlur = c * 0.3;
+      x.lineWidth = Math.max(4, c * 0.13); x.strokeStyle = 'rgba(255,208,60,' + (0.55 + 0.45 * pulse) + ')'; x.stroke();
+      x.shadowBlur = 0; x.lineWidth = Math.max(1.5, c * 0.04); x.strokeStyle = 'rgba(255,255,230,0.9)'; x.stroke();
       x.restore();
+      if (hs.mark) { // cells the player should cross out (tutorial)
+        x.globalAlpha = 0.35 + 0.35 * pulse;
+        var self = this;
+        hs.mark.forEach(function (j) { if (!self.mark[j]) drawX(x, cx(j), cy(j), c * 0.15, '#ffffff', Math.max(2, c * 0.08)); });
+        x.globalAlpha = 1;
+      }
       if (hs.elim) {
         x.lineWidth = Math.max(2, c * 0.06); x.strokeStyle = 'rgba(255,90,90,' + (0.5 + 0.5 * pulse) + ')';
         hs.elim.forEach(function (j) { rr(x, m + (j % n) * c + c * 0.08, m + ((j / n) | 0) * c + c * 0.08, c * 0.84, c * 0.84, c * 0.18); x.stroke(); });

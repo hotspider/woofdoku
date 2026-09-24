@@ -12,7 +12,7 @@
 <title>Woofdoku</title>
 <link rel="icon" href="assets/images/icon/paw.png">
 <link rel="apple-touch-icon" href="assets/images/pup/corgi_joy.png">
-<link rel="stylesheet" href="css/style.css?v=1.0.0">
+<link rel="stylesheet" href="css/style.css?v=1.1.0">
 </head>
 <body>
 <div id="backdrop"></div>
@@ -22,8 +22,8 @@
     <div class="load-wrap">
       <img class="load-logo" src="assets/images/ui/logo.png" alt="Woofdoku">
       <div class="load-bar" id="load-bar"><i></i></div>
-      <div class="load-pct" id="load-pct">0%</div>
-      <div class="load-msg" id="load-msg"></div>
+      <div class="load-pct st" id="load-pct">0%</div>
+      <div class="load-msg st" id="load-msg"></div>
     </div>
   </div>
 
@@ -31,44 +31,44 @@
   <div id="screen-home" class="screen">
     <div class="bg" id="h-bg"></div>
     <div class="topbar">
-      <button class="pill coins" id="h-coins" aria-label="Coins"><img alt=""><span class="val">0</span><i class="plus">+</i></button>
+      <button class="coinbar coins" id="h-coins" aria-label="Coins"><img class="ci" alt=""><span class="val st">0</span><b class="plus"></b></button>
       <div class="spacer"></div>
-      <button class="icon-btn" id="h-set" aria-label="Settings"><img alt=""></button>
+      <button class="rbtn rnd orange" id="h-set" aria-label="Settings"><img alt=""></button>
     </div>
-    <div class="home-logo"><img id="h-logo" alt="Woofdoku"><div class="tag" id="h-tag"></div></div>
+    <div class="home-logo"><img id="h-logo" alt="Woofdoku"><div class="ribbon pink mini"><span class="st" id="h-tag"></span></div></div>
     <div class="home-stage">
       <div class="home-side left">
-        <button class="feat" id="f-gift"><span class="ic"><img alt=""><b class="badge"></b></span><span class="lbl"></span></button>
-        <button class="feat" id="f-wheel"><span class="ic"><img alt=""><b class="badge"></b></span><span class="lbl"></span></button>
-        <button class="feat" id="f-free"><span class="ic"><img alt=""><b class="badge"></b></span><span class="lbl"></span></button>
+        <button class="feat" id="f-gift"><span class="ic rnd pink"><img alt=""><b class="badge"></b></span><span class="lbl st"></span></button>
+        <button class="feat" id="f-wheel"><span class="ic rnd purple"><img alt=""><b class="badge"></b></span><span class="lbl st"></span></button>
+        <button class="feat" id="f-free"><span class="ic rnd blue"><img alt=""><b class="badge"></b></span><span class="lbl st"></span></button>
       </div>
       <div class="home-mascot">
         <div class="speech" id="h-speech"></div>
         <img id="h-mascot" alt="">
+        <i class="shadow"></i>
       </div>
       <div class="home-side right">
-        <button class="feat" id="f-daily"><span class="ic"><img alt=""><b class="badge"></b></span><span class="lbl"></span></button>
-        <button class="feat" id="f-album"><span class="ic"><img alt=""><b class="badge"></b></span><span class="lbl"></span></button>
-        <button class="feat" id="f-levels"><span class="ic"><img alt=""><b class="badge"></b></span><span class="lbl"></span></button>
+        <button class="feat" id="f-daily"><span class="ic rnd gold"><img alt=""><b class="badge"></b></span><span class="lbl st"></span></button>
+        <button class="feat" id="f-album"><span class="ic rnd orange"><img alt=""><b class="badge"></b></span><span class="lbl st"></span></button>
+        <button class="feat" id="f-levels"><span class="ic rnd green"><img alt=""><b class="badge"></b></span><span class="lbl st"></span></button>
       </div>
     </div>
     <div class="home-bottom">
-      <button class="box-bar" id="h-box"><img alt=""><div class="bar"><i></i><span></span></div><b class="go"></b></button>
-      <button class="btn big green" id="h-play"><span class="t1"></span><span class="t2"></span></button>
+      <button class="boxbar" id="h-box"><img class="gi" alt=""><div class="bar"><i></i><span class="st"></span></div><b class="go st"></b></button>
+      <button class="btn green big shine" id="h-play"><span class="t1 st"></span><span class="t2 st"></span></button>
     </div>
   </div>
 
   <!-- level map -->
   <div id="screen-map" class="screen">
-    <div class="bg" id="m-bg"></div>
-    <div class="topbar">
-      <button class="icon-btn" id="m-back" aria-label="Back"><img alt=""></button>
-      <div class="top-title" id="m-title"></div>
-      <div class="spacer"></div>
-      <div class="pill" id="m-stars"><img alt=""><span class="val">0</span></div>
-      <button class="pill coins" id="m-coins"><img alt=""><span class="val">0</span><i class="plus">+</i></button>
-    </div>
     <div id="map-scroll"><div id="map-list"></div></div>
+    <div class="topbar map-top">
+      <button class="rbtn rnd orange" id="m-back" aria-label="Home"><img alt=""></button>
+      <div class="map-title st" id="m-title"></div>
+      <div class="spacer"></div>
+      <div class="coinbar" id="m-stars"><img class="ci" alt=""><span class="val st">0</span></div>
+      <button class="coinbar coins" id="m-coins"><img class="ci" alt=""><span class="val st">0</span><b class="plus"></b></button>
+    </div>
   </div>
 
   <!-- puzzle -->
@@ -76,26 +76,29 @@
     <div class="bg" id="g-bg"></div>
     <div id="g-top">
       <div class="g-row">
-        <button class="icon-btn" id="g-pause" aria-label="Pause"><img alt=""></button>
-        <div class="g-titlebox"><div id="g-title"></div><div class="g-sub"><span id="g-diff"></span><span id="g-difflbl"></span></div></div>
-        <div class="g-timebox"><img alt="" id="g-clock"><span id="g-time">00:00</span></div>
+        <button class="rbtn rnd orange" id="g-pause" aria-label="Pause"><img alt=""></button>
+        <div class="g-titlebox">
+          <div class="ribbon blue" id="g-ribbon"><span class="st" id="g-title"></span></div>
+          <div class="g-sub"><span id="g-diff"></span><span id="g-difflbl"></span></div>
+        </div>
+        <div class="coinbar timebar"><img class="ci" alt="" id="g-clock"><span class="val st" id="g-time">00:00</span></div>
       </div>
-      <div id="g-hearts"></div>
+      <div class="heartbar"><div id="g-hearts"></div></div>
     </div>
     <div id="g-mid">
-      <div id="g-bubble"><img alt=""><div class="txt"></div></div>
+      <div id="g-bubble"><span class="av"><img alt=""></span><div class="txt"></div></div>
       <div id="g-board"><canvas id="board"></canvas></div>
     </div>
     <div id="g-bottom">
       <div class="tools">
-        <button class="tool" id="t-undo"><img alt=""><span class="lbl"></span></button>
-        <button class="tool" id="t-clear"><img alt=""><span class="lbl"></span></button>
-        <button class="tool mode" id="t-mode"><span class="sw"><b>✕</b><b><img alt="" id="t-mode-pup"></b></span><span class="lbl"></span></button>
+        <button class="tool" id="t-undo"><span class="rnd blue"><img alt=""></span><span class="lbl st"></span></button>
+        <button class="tool mode" id="t-mode"><span class="sw"><b class="st">✕</b><b><img alt="" id="t-mode-pup"></b></span><span class="lbl st"></span></button>
+        <button class="tool" id="t-clear"><span class="rnd blue"><img alt=""></span><span class="lbl st"></span></button>
       </div>
-      <div class="boosters">
-        <button class="booster" id="b-sniff"><span class="ic"><img alt=""><img class="lock" alt=""></span><b class="cnt"></b><span class="lbl"></span></button>
-        <button class="booster" id="b-fetch"><span class="ic"><img alt=""><img class="lock" alt=""></span><b class="cnt"></b><span class="lbl"></span></button>
-        <button class="booster" id="b-sweep"><span class="ic"><img alt=""><img class="lock" alt=""></span><b class="cnt"></b><span class="lbl"></span></button>
+      <div class="shelf">
+        <button class="booster" id="b-sniff"><span class="slot"><img class="bi" alt=""><img class="lock" alt=""></span><b class="cnt"></b><span class="lbl st"></span></button>
+        <button class="booster" id="b-fetch"><span class="slot"><img class="bi" alt=""><img class="lock" alt=""></span><b class="cnt"></b><span class="lbl st"></span></button>
+        <button class="booster" id="b-sweep"><span class="slot"><img class="bi" alt=""><img class="lock" alt=""></span><b class="cnt"></b><span class="lbl st"></span></button>
       </div>
     </div>
     <img id="g-hand" alt="">
@@ -107,16 +110,16 @@
   <div id="cover"></div>
 </div>
 <div id="rotate"><div><img src="assets/images/pup/corgi_sad.png" alt=""><p id="rotate-msg">Please rotate your phone to portrait</p></div></div>
-<script src="js/i18n.js?v=1.0.0"></script>
-<script src="js/store.js?v=1.0.0"></script>
-<script src="js/puzzle.js?v=1.0.0"></script>
-<script src="js/assets.js?v=1.0.0"></script>
-<script src="js/audio.js?v=1.0.0"></script>
-<script src="js/fx.js?v=1.0.0"></script>
-<script src="js/board.js?v=1.0.0"></script>
-<script src="js/ads.js?v=1.0.0"></script>
-<script src="js/game.js?v=1.0.0"></script>
-<script src="js/ui.js?v=1.0.0"></script>
-<script src="js/main.js?v=1.0.0"></script>
+<script src="js/i18n.js?v=1.1.0"></script>
+<script src="js/store.js?v=1.1.0"></script>
+<script src="js/puzzle.js?v=1.1.0"></script>
+<script src="js/assets.js?v=1.1.0"></script>
+<script src="js/audio.js?v=1.1.0"></script>
+<script src="js/fx.js?v=1.1.0"></script>
+<script src="js/board.js?v=1.1.0"></script>
+<script src="js/ads.js?v=1.1.0"></script>
+<script src="js/game.js?v=1.1.0"></script>
+<script src="js/ui.js?v=1.1.0"></script>
+<script src="js/main.js?v=1.1.0"></script>
 </body>
 </html>
