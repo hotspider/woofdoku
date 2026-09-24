@@ -9,7 +9,6 @@
 
   function url(k) { return Assets.url(k); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  function vib(p) { try { if (Store.data.settings.vibrate && navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
   function chapterOf(levelIndex) { return Math.min(C.CHAPTERS.length - 1, Math.floor(levelIndex / C.CHAPTER_SIZE)); }
   function breedName(id) { return I18n.breed(id); }
   function itemsHtml(items) {
@@ -371,7 +370,7 @@
     var stars = h.el.querySelectorAll('.win-stars img');
     for (var k = 0; k < res.stars; k++) (function (k) {
       setTimeout(function () {
-        stars[k].classList.add('on'); Snd.play('star', { i: k }); vib(15);
+        stars[k].classList.add('on'); Snd.play('star', { i: k });
         var p = Fx.center(stars[k]); Fx.burst(p.x, p.y, { n: 12, shapes: ['star', 'sparkle'], colors: ['#ffd257', '#fff6b0', '#ffffff'], speed: 260, gravity: 300, life: 0.7 });
       }, 350 + k * 330);
     })(k);
@@ -422,12 +421,10 @@
   // ------------------------------------------------------------------ settings / pause
   function settingsBody(inGame) {
     var s = Store.data.settings, wrap = document.createElement('div');
-    var rows = [['music', 'icon/music', T('music')], ['sfx', 'icon/sound', T('sound')], ['vibrate', 'icon/vibrate', T('vibration')],
-      ['patterns', 'icon/paw', T('patterns'), T('patterns_d')]];
+    var rows = [['music', 'icon/music', T('music')], ['sfx', 'icon/sound', T('sound')]];
     var html = '<div class="set-list">' + rows.map(function (r) {
       return '<div class="set-row" data-k="' + r[0] + '"><img alt="" src="' + url(r[1]) + '"><div class="nm">' + esc(r[2]) + (r[3] ? '<small>' + esc(r[3]) + '</small>' : '') + '</div><button class="switch' + (s[r[0]] ? ' on' : '') + '" aria-label="' + esc(r[2]) + '"></button></div>';
     }).join('');
-    html += '<div class="set-row"><img alt="" src="' + url('icon/globe') + '"><div class="nm">' + esc(T('language')) + '</div><div class="seg"><button data-l="en" class="' + (I18n.lang === 'en' ? 'on' : '') + '">EN</button><button data-l="zh" class="' + (I18n.lang === 'zh' ? 'on' : '') + '">中文</button></div></div>';
     html += '<div class="set-row link" data-a="rules"><img alt="" src="' + url('icon/album') + '"><div class="nm">' + esc(T('how_to_play')) + '</div><span class="go">›</span></div>';
     if (!inGame) html += '<div class="set-row link" data-a="reset"><img alt="" src="' + url('icon/retry') + '"><div class="nm">' + esc(T('reset')) + '</div><span class="go">›</span></div>';
     html += '</div>';
@@ -440,17 +437,6 @@
         Snd.play('toggle');
         if (k === 'music') Snd.setMusic(s.music);
         if (k === 'sfx') Snd.setSfx(s.sfx);
-        if (k === 'vibrate' && s.vibrate) vib(30);
-        if (k === 'patterns') Game.refreshHud();
-      });
-    });
-    wrap.querySelectorAll('.seg button').forEach(function (b) {
-      b.addEventListener('click', function () {
-        Snd.play('toggle');
-        s.lang = b.getAttribute('data-l'); Store.save(); I18n.set(s.lang);
-        applyLang();
-        closeAll();
-        if (inGame) { Game.refreshHud(); Game.pause(); UI.showPause(); } else openSettings();
       });
     });
     wrap.querySelectorAll('[data-a]').forEach(function (b) {
@@ -458,7 +444,7 @@
         Snd.play('tap');
         var a = b.getAttribute('data-a');
         if (a === 'rules') showRules();
-        if (a === 'reset') confirmBox(T('reset_q'), function () { Store.reset(); I18n.set(Store.data.settings.lang); applyLang(); closeAll(); goHome(); });
+        if (a === 'reset') confirmBox(T('reset_q'), function () { Store.reset(); closeAll(); goHome(); });
       });
     });
     return wrap;
@@ -474,11 +460,7 @@
       ]
     });
   }
-  function applyLang() {
-    $('rotate-msg').textContent = T('rotate');
-    if (screen === 'home') renderHome();
-    if (screen === 'map') renderMap();
-  }
+
 
   // ------------------------------------------------------------------ boosters
   function boosterIntro(id, done) {
@@ -612,7 +594,7 @@
     function done(pick) {
       var prize = C.WHEEL[pick], item = prize.coins ? { coins: prize.coins } : { booster: prize.booster, n: prize.n };
       var blink = 0, iv = setInterval(function () { drawWheel(cv, rot, blink++ % 2 ? pick : -1); if (blink > 6) { clearInterval(iv); drawWheel(cv, rot, pick); } }, 120);
-      Snd.play('spin_win'); vib(30);
+      Snd.play('spin_win');
       Store.grant([item]);
       var p = Fx.center(cv);
       Fx.burst(p.x, p.y - 100, { n: prize.jackpot ? 40 : 20, shapes: ['star', 'sparkle', 'paw'], speed: 320 });
@@ -647,7 +629,7 @@
     if (screen === 'home') renderHome();
   }
   function showUnlock(id, done) {
-    Snd.play('unlock'); vib([30, 50, 30]);
+    Snd.play('unlock');
     Fx.confetti(90);
     modal({
       title: T('new_pup'), color: 'purple', close: false,
@@ -668,7 +650,7 @@
     var items = [{ coins: 100 }, { booster: bo, n: 1 }];
     if (Math.random() < 0.35) items.push({ booster: C.BOOSTERS[(Math.random() * 3) | 0], n: 1 });
     Store.grant(items);
-    Snd.play('chest'); vib([20, 40, 20]);
+    Snd.play('chest');
     var h = modal({ title: T('box_title'), color: 'blue', close: false, body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><div class="prizes">' + itemsHtml(items) + '</div>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (m) { m.close(); } }], onClose: function () { renderHome(); } });
     setTimeout(function () { var p = Fx.center(h.el.querySelector('.glowbox')); Fx.burst(p.x, p.y, { n: 30, shapes: ['star', 'bone', 'paw', 'sparkle'], speed: 340 }); flyCoins(p, 100); }, 300);
   }
@@ -728,7 +710,7 @@
     goHome: goHome, goMap: goMap, playLevel: playLevel, playDaily: playDaily,
     finishPuzzle: finishPuzzle, showWin: showWin, showFail: showFail, showPause: showPause, showRules: showRules,
     boosterIntro: boosterIntro, boosterShop: boosterShop, openGift: openGift, openWheel: openWheel, openAlbum: openAlbum, openBox: openBox,
-    refreshCoins: refreshCoins, applyLang: applyLang, wire: wire,
+    refreshCoins: refreshCoins, wire: wire,
     screen: function () { return screen; }
   };
 })();

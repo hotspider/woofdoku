@@ -13,7 +13,6 @@
   var DOUBLE = 0.34;         // double-tap window (s)
 
   function t() { return performance.now() / 1000; }
-  function vib(p) { try { if (Store.data.settings.vibrate && navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
   // ------------------------------------------------------------------ level data
@@ -179,7 +178,7 @@
     if (S.pups[i]) { bv.nudge(i); Snd.play('yip', { i: (Math.random() * 6) | 0 }); return; }
     var j = Puzzle.conflictWith(B.n, B.reg, S.pups, i);
     if (j >= 0) {
-      bv.conflict(i, j); Snd.play('blocked'); vib(30);
+      bv.conflict(i, j); Snd.play('blocked');
       UI.toast(conflictReason(i, j));
       return;
     }
@@ -189,7 +188,6 @@
     bv.placePup(i);
     var k = pupCount();
     Snd.play('place'); Snd.play('yip', { i: (Math.random() * 6) | 0 }); Snd.play('progress', { i: Math.min(9, k - 1) });
-    vib(12);
     var p = cellPos(i), col = BoardView.PALETTE[B.colors[B.reg[i]]];
     Fx.burst(p.x, p.y, { n: 12, shapes: ['heart', 'paw', 'sparkle', 'dot'], colors: [col.dark, col.base, '#ffffff', '#ffd257'], speed: 240, gravity: 300, life: 0.8, size: 7 });
     Fx.ring(p.x, p.y, '#ffffff', bv.cellSize() * 0.9, 0.45);
@@ -215,7 +213,6 @@
     bv.wrongPup(i);
     if (S.marks[i] !== 2) setMark(i, 2, 1.15);
     Snd.play('wrong'); setTimeout(function () { Snd.play('heart_break'); }, 180);
-    vib([40, 60, 40]);
     renderHearts(S.hearts);
     var hs = document.querySelectorAll('#g-hearts .heart');
     var hp = hs[S.hearts] ? Fx.center(hs[S.hearts]) : cellPos(i);
@@ -402,7 +399,7 @@
         over: false, lock: false, paused: false, continued: false, mistakes: 0, boostersUsed: 0,
         tutorial: mode === 'level' && index === 0 && !Store.data.tut.level1, tutStage: 'place1'
       };
-      bv.setLevel({ n: B.n, reg: B.reg, colors: B.colors, breeds: B.breeds, patterns: Store.data.settings.patterns });
+      bv.setLevel({ n: B.n, reg: B.reg, colors: B.colors, breeds: B.breeds });
       renderTitle(); renderHearts(); renderPups(); renderRules(); setRule(null); renderTime(); renderBoosters(); bubble(null); showHand(null); active();
       $('g-hearts').classList.toggle('tut', S.tutorial);
       layout();
@@ -437,7 +434,7 @@
       });
     },
     leave: function () { bv.stop(); showHand(null); S = null; },
-    refreshHud: function () { if (S) { renderBoosters(); renderTitle(); renderRules(); bv.setPatterns(Store.data.settings.patterns); } },
+    refreshHud: function () { if (S) { renderBoosters(); renderTitle(); renderRules(); } },
     session: function () { return S; },
     // test hooks (used by tools/e2e.mjs)
     _debug: function () { return { S: S, B: B, bv: bv }; },

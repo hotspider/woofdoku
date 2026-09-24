@@ -3,7 +3,6 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var s = Store.data.settings;
-  I18n.set(s.lang);
   Snd.setSfx(s.sfx); Snd.setMusic(s.music);
   Fx.init($('fx'), $('app'));
   $('load-msg').textContent = T('loading');

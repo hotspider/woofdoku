@@ -50,7 +50,7 @@
       boosters: { hint: 0, locate: 0 },
       boosterIntro: {},
       pups: CFG.STARTER_PUPS.slice(), newPups: [],
-      settings: { music: true, sfx: true, vibrate: true, patterns: false, lang: 'en' },
+      settings: { music: true, sfx: true },
       gift: { last: '', day: 0 },
       wheel: { date: '', free: false, ads: 0 },
       challenge: { date: '', streak: 0, lastDone: '' },
@@ -82,7 +82,7 @@
       d.boosters = { hint: (d.boosters.sniff | 0) + (d.boosters.fetch | 0), locate: d.boosters.sweep | 0 };
       d.boosterIntro = {};
     }
-    delete d.settings.tapMode; delete d.settings.automark;
+    ['tapMode', 'automark', 'vibrate', 'patterns', 'lang'].forEach(function (k) { delete d.settings[k]; });
     CFG.BOOSTERS.forEach(function (b) { d.boosters[b] = Math.max(0, d.boosters[b] | 0); });
     if (!Array.isArray(d.pups)) d.pups = CFG.STARTER_PUPS.slice();
     return d;

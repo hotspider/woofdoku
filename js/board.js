@@ -4,7 +4,7 @@
  * told apart by tile colour only. ✕ marks are big white strokes that draw themselves.
  *
  *   var bv = new BoardView(canvas, handlers)   handlers: onTap(i), onDrag(i, first), onDragEnd()
- *   bv.setLevel({ n, reg, colors, breeds, patterns })   colors[g] = palette index, breeds[g] = pup id
+ *   bv.setLevel({ n, reg, colors, breeds })   colors[g] = palette index, breeds[g] = pup id
  *   bv.resize(cssSize)
  *   bv.setMark(i, v, delay)   v: 0 none, 1 player ✕, 2 certain ✕ (Locate / wrong spot)
  *   bv.placePup(i, opts) / bv.wrongPup(i) / bv.conflict(a, b) / bv.nudge(i) / bv.glowCells(cells, color, life)
@@ -17,7 +17,7 @@
   'use strict';
   var TAU = Math.PI * 2;
 
-  // one flat colour per zone; dark = colour-blind symbols
+  // one flat colour per zone
   var PALETTE = [
     { base: '#f58aaf', dark: '#b8386a' }, // 0 pink
     { base: '#ffa95f', dark: '#b85d12' }, // 1 orange
@@ -75,22 +75,6 @@
     x.moveTo(px + r, py); x.arcTo(px + w, py, px + w, py + h, r); x.arcTo(px + w, py + h, px, py + h, r);
     x.arcTo(px, py + h, px, py, r); x.arcTo(px, py, px + w, py, r); x.closePath();
   }
-  function symbol(x, k, cx, cy, s) {
-    x.beginPath();
-    switch (k % 10) {
-      case 0: x.arc(cx, cy, s, 0, TAU); break;
-      case 1: x.moveTo(cx, cy - s); x.lineTo(cx + s, cy + s * 0.8); x.lineTo(cx - s, cy + s * 0.8); x.closePath(); break;
-      case 2: x.rect(cx - s * 0.85, cy - s * 0.85, s * 1.7, s * 1.7); break;
-      case 3: x.moveTo(cx, cy - s); x.lineTo(cx + s, cy); x.lineTo(cx, cy + s); x.lineTo(cx - s, cy); x.closePath(); break;
-      case 4: for (var i = 0; i < 10; i++) { var a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? s * 0.45 : s * 1.1; if (!i) x.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); else x.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } x.closePath(); break;
-      case 5: x.rect(cx - s, cy - s * 0.3, s * 2, s * 0.6); x.rect(cx - s * 0.3, cy - s, s * 0.6, s * 2); break;
-      case 6: for (i = 0; i < 6; i++) { a = i / 6 * TAU; if (!i) x.moveTo(cx + Math.cos(a) * s, cy + Math.sin(a) * s); else x.lineTo(cx + Math.cos(a) * s, cy + Math.sin(a) * s); } x.closePath(); break;
-      case 7: x.moveTo(cx, cy + s); x.bezierCurveTo(cx - s * 1.4, cy, cx - s * 0.6, cy - s * 1.2, cx, cy - s * 0.4); x.bezierCurveTo(cx + s * 0.6, cy - s * 1.2, cx + s * 1.4, cy, cx, cy + s); break;
-      case 8: x.arc(cx, cy, s, 0, TAU); x.moveTo(cx + s * 0.45, cy); x.arc(cx, cy, s * 0.45, 0, TAU, true); break;
-      case 9: x.moveTo(cx - s, cy + s * 0.6); x.lineTo(cx, cy - s); x.lineTo(cx + s, cy + s * 0.6); x.lineTo(cx + s * 0.55, cy + s * 0.6); x.lineTo(cx, cy - s * 0.2); x.lineTo(cx - s * 0.55, cy + s * 0.6); x.closePath(); break;
-    }
-    x.fill('evenodd');
-  }
   // big rounded ✕; k = draw progress 0..1 (first stroke, then the second)
   function drawX(x, cx, cy, s, lw, col, k, shadow) {
     if (k == null) k = 1;
@@ -123,10 +107,9 @@
     var s = scale || 1, ts = g.ts * s, cx = g.m + (i % n + 0.5) * g.c, cy = g.m + (((i / n) | 0) + 0.5) * g.c;
     return { x: cx - ts / 2, y: cy - ts / 2, s: ts, cx: cx, cy: cy, r: g.tr * s };
   }
-  function drawTile(x, g, n, i, color, scale, patternsCol) {
+  function drawTile(x, g, n, i, color, scale) {
     var t = tileRect(g, n, i, scale);
     rr(x, t.x, t.y, t.s, t.s, t.r); x.fillStyle = color.base; x.fill();
-    if (patternsCol != null) { x.fillStyle = 'rgba(255,255,255,0.55)'; symbol(x, patternsCol, t.x + t.s * 0.2, t.y + t.s * 0.2, t.s * 0.09); }
     return t;
   }
 
@@ -149,7 +132,7 @@
   var P = BoardView.prototype;
 
   P.setLevel = function (L) {
-    this.n = L.n; this.reg = L.reg; this.colors = L.colors; this.breeds = L.breeds; this.patterns = !!L.patterns;
+    this.n = L.n; this.reg = L.reg; this.colors = L.colors; this.breeds = L.breeds;
     var N = this.n * this.n;
     this.mark = new Uint8Array(N); this.markT = new Float64Array(N).fill(-9);
     this.pup = new Uint8Array(N); this.pupT = new Float64Array(N).fill(-9);
@@ -158,7 +141,6 @@
     this.hintSpec = null; this.fx = []; this.locked = false; this.press = -1; this.pressAmt = new Float32Array(N);
     this._buildStatic();
   };
-  P.setPatterns = function (on) { this.patterns = !!on; };
   P.resize = function (css) {
     this.size = Math.max(120, Math.floor(css));
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -281,7 +263,7 @@
         var tr1 = tileRect(g, n, i, sc); rr(x, tr1.x, tr1.y, tr1.s, tr1.s, tr1.r); x.fillStyle = col.base; x.fill();
         x.restore();
       }
-      var tr = drawTile(x, g, n, i, col, sc, this.patterns ? this.colors[this.reg[i]] : null);
+      var tr = drawTile(x, g, n, i, col, sc);
       if (inv[i]) { rr(x, tr.x + 1.5, tr.y + 1.5, tr.s - 3, tr.s - 3, tr.r); x.lineWidth = Math.max(2, c * 0.05); x.strokeStyle = 'rgba(255,248,210,' + (0.55 + 0.4 * pulse) + ')'; x.stroke(); }
     }
     if (hs && hs.target != null) {
@@ -386,7 +368,7 @@
     for (i = 0; i < n * n; i++) {
       var col = PALETTE[spec.colors[reg[i]]];
       if (glow[i]) { x.save(); x.shadowColor = 'rgba(255,196,40,0.95)'; x.shadowBlur = g.c * 0.3; var t0 = tileRect(g, n, i); rr(x, t0.x, t0.y, t0.s, t0.s, t0.r); x.fillStyle = col.base; x.fill(); x.restore(); }
-      var t = drawTile(x, g, n, i, col, 1, null);
+      var t = drawTile(x, g, n, i, col, 1);
       if (red[i]) { rr(x, t.x, t.y, t.s, t.s, t.r); x.fillStyle = 'rgba(255,70,70,0.45)'; x.fill(); }
     }
     (spec.marks || []).forEach(function (q) { var t = tileRect(g, n, q); drawX(x, t.cx, t.cy, g.c * 0.2, Math.max(2, g.c * 0.12), '#ffffff', 1, 'rgba(60,30,10,0.16)'); });

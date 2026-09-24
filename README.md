@@ -4,5 +4,5 @@ Cute puppy logic puzzle (H5, mobile-first). Place one pup in every row, column a
 
 **Play:** https://hotspider.github.io/woofdoku/
 
-120 levels · daily puzzle · lucky wheel · treat box · 12 collectible pups · English / 中文.
+120 levels · daily challenge · lucky spin · star chest · 12 collectible pups.
 This repository holds the built web game (static files served by GitHub Pages).
