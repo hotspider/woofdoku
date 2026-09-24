@@ -6,8 +6,9 @@
  *
  * The same solver powers three things:
  *   - tools/gen-levels.mjs rates every generated level (which techniques it needs, how many);
- *   - the in-game "Sniff" hint (Puzzle.nextStep) explains the easiest next deduction;
- *   - the "Sweep" booster (Puzzle.sweep) crosses out every cell basic logic can rule out.
+ *   - the Hint booster (Puzzle.hintPup) reveals the pup a logical player would find next;
+ *   - the Locate booster (Puzzle.locate) finds a few blocked cells, logical ones first;
+ *   - the level-1 tutorial coach (Puzzle.nextStep) points at each forced spot.
  *
  * Cells are indexed i = row * n + col. Units: 0..n-1 rows, n..2n-1 columns, 2n..3n-1 yards.
  * Works in the browser (window.Puzzle) and in Node (module.exports).
@@ -312,20 +313,54 @@
     return null;
   }
 
-  // Sweep booster: every cell basic logic (clear/confine/block, repeated) rules out, without placing pups.
-  // Returns { elim: [cells], wrong: [cells with a wrong ✕ that must be lifted] }.
-  function sweep(n, reg, pups, marks, sol) {
-    var b = new Board(n, reg), s = stateFrom(b, pups, marks, sol), wrong = [], i;
-    for (i = 0; i < b.N; i++) if (marks[i] && sol[i] && !pups[i]) wrong.push(i);
-    var before = s.cand.slice();
-    for (var guard = 0; guard < 500; guard++) {
-      var st = tConfine(b, s) || tBlock(b, s) || tGroup(b, s, 2, 2);
+  // Hint booster: the pup a logical player would find next. Returns { place, unit } or null.
+  function hintPup(n, reg, pups, marks, sol) {
+    var b = new Board(n, reg), s = stateFrom(b, pups, marks, sol), i;
+    for (var guard = 0; guard < 400; guard++) {
+      var st = findStep(b, s, 6);
       if (!st) break;
+      if (st.place != null) { if (sol[st.place]) return { place: st.place, unit: st.unit }; break; }
       applyStep(b, s, st);
     }
-    var elim = [];
-    for (i = 0; i < b.N; i++) if (!pups[i] && !marks[i] && (!s.cand[i] || !before[i]) && !sol[i]) elim.push(i);
-    return { elim: elim, wrong: wrong };
+    // fallback: the yard with the fewest open cells
+    var best = -1, bestOpen = 1e9;
+    for (var g = 0; g < n; g++) {
+      var cells = b.units[2 * n + g], has = false, open = 0;
+      for (i = 0; i < cells.length; i++) { if (pups[cells[i]]) has = true; else if (!marks[cells[i]]) open++; }
+      if (!has && open < bestOpen) { bestOpen = open; best = g; }
+    }
+    if (best < 0) return null;
+    var yc = b.units[2 * n + best];
+    for (i = 0; i < yc.length; i++) if (sol[yc[i]]) return { place: yc[i], unit: 2 * n + best };
+    return null;
+  }
+
+  // Locate booster: up to `count` blocked cells (cells no pup can use) that are not crossed out yet.
+  // Cells logic can rule out right now come first, then cells in the tightest row/column/yard,
+  // and cells that an existing pup obviously blocks only last.
+  function locate(n, reg, pups, marks, sol, count) {
+    var b = new Board(n, reg), s = stateFrom(b, pups, marks, sol), out = [], seen = {}, i, k;
+    function add(q) { if (out.length < count && !seen[q] && !sol[q] && !pups[q] && !marks[q]) { seen[q] = 1; out.push(q); } }
+    var obvious = {};
+    for (i = 0; i < b.N; i++) if (pups[i]) b.attack[i].forEach(function (q) { obvious[q] = 1; });
+    for (var guard = 0; guard < 200 && out.length < count; guard++) {
+      var st = findStep(b, s, 6);
+      if (!st) break;
+      if (st.elim) st.elim.forEach(function (q) { if (!obvious[q]) add(q); });
+      applyStep(b, s, st);
+    }
+    if (out.length < count) {
+      // remaining blocked cells, tightest units first
+      var open = function (u) { var c = b.units[u], m = 0; for (var j = 0; j < c.length; j++) if (!pups[c[j]] && !marks[c[j]] && !seen[c[j]]) m++; return m; };
+      var rest = [];
+      for (i = 0; i < b.N; i++) if (!sol[i] && !pups[i] && !marks[i] && !seen[i]) {
+        var cu = b.cellUnits[i], tight = Math.min(open(cu[0]), open(cu[1]), open(cu[2]));
+        rest.push({ i: i, key: (obvious[i] ? 1000 : 0) + tight });
+      }
+      rest.sort(function (a, c) { return a.key - c.key || a.i - c.i; });
+      for (k = 0; k < rest.length; k++) add(rest[k].i);
+    }
+    return out;
   }
 
   // Whether placing a pup on i breaks a visible rule with pups already on the board.
@@ -343,7 +378,7 @@
   var Puzzle = {
     Board: Board, State: State, TIER: TIER, WEIGHT: WEIGHT,
     findStep: findStep, applyStep: applyStep, placePup: placePup, candsOf: candsOf, unitDone: unitDone, kindOf: kindOf,
-    rate: rate, solveAll: solveAll, nextStep: nextStep, sweep: sweep, conflictWith: conflictWith, brokenUnit: brokenUnit
+    rate: rate, solveAll: solveAll, nextStep: nextStep, hintPup: hintPup, locate: locate, conflictWith: conflictWith, brokenUnit: brokenUnit
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = Puzzle;
   else root.Puzzle = Puzzle;

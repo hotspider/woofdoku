@@ -237,7 +237,6 @@
   P.glowCells = function (cells, color, life) { this.fx.push({ kind: 'glow', cells: cells, color: color || '#fff6b0', t: now(), life: life || 0.9 }); };
   P.hint = function (spec) { this.hintSpec = spec; this.hintT = now(); };
   P.clearHint = function () { this.hintSpec = null; };
-  P.sweepFx = function () { this.fx.push({ kind: 'sweep', t: now(), life: 0.9 }); };
   P.winWave = function () {
     var self = this;
     this.joy = now(); this.locked = true;
@@ -367,11 +366,6 @@
         x.fillStyle = f.color; x.globalAlpha = 0.55 * Math.sin(ft * Math.PI);
         f.cells.forEach(function (q) { rr(x, m + (q % n) * c + 1, m + ((q / n) | 0) * c + 1, c - 2, c - 2, c * 0.18); x.fill(); });
         x.globalAlpha = 1;
-      } else if (f.kind === 'sweep') {
-        var sy = m + g.G * ft;
-        var gr = x.createLinearGradient(0, sy - c * 1.5, 0, sy);
-        gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,0.75)');
-        x.save(); rr(x, m, m, g.G, g.G, g.R); x.clip(); x.fillStyle = gr; x.fillRect(m, sy - c * 1.5, g.G, c * 1.5); x.restore();
       }
     }
 

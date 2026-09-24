@@ -12,10 +12,11 @@
     LEVELS: 120,
     HEARTS: 3,
     START_COINS: 200,
-    BOOSTERS: ['sniff', 'fetch', 'sweep'],
-    BOOSTER_UNLOCK: { sniff: 3, fetch: 7, sweep: 11 },
+    // hint: reveals where a pup belongs · locate: finds a few blocked cells and marks them ✕
+    BOOSTERS: ['hint', 'locate'],
+    BOOSTER_UNLOCK: { hint: 3, locate: 5 },
     BOOSTER_GIFT: 3,
-    BOOSTER_PRICE: { sniff: 120, fetch: 200, sweep: 160 },   // price for a pack of 3
+    BOOSTER_PRICE: { hint: 180, locate: 120 },   // price for a pack of 3
     BOOSTER_PACK: 3,
     CONTINUE_PRICE: 90,
     REWARD_BASE: 10, REWARD_STAR: 5, REWARD_REPLAY: 5, BOSS_MULT: 2,
@@ -31,13 +32,13 @@
     CHAPTER_SIZE: 20,
     // 7-day login calendar
     GIFTS: [
-      [{ coins: 50 }], [{ booster: 'sniff', n: 1 }], [{ coins: 80 }], [{ booster: 'fetch', n: 1 }],
-      [{ coins: 120 }], [{ booster: 'sweep', n: 1 }, { booster: 'sniff', n: 1 }], [{ coins: 300 }, { booster: 'fetch', n: 1 }, { booster: 'sweep', n: 1 }]
+      [{ coins: 50 }], [{ booster: 'locate', n: 1 }], [{ coins: 80 }], [{ booster: 'hint', n: 1 }],
+      [{ coins: 120 }], [{ booster: 'locate', n: 2 }], [{ coins: 300 }, { booster: 'hint', n: 1 }, { booster: 'locate', n: 1 }]
     ],
     // lucky wheel: weight, prize
     WHEEL: [
-      { w: 22, coins: 20 }, { w: 12, booster: 'sniff', n: 1 }, { w: 18, coins: 50 }, { w: 9, booster: 'sweep', n: 1 },
-      { w: 12, coins: 100 }, { w: 7, booster: 'fetch', n: 1 }, { w: 17, coins: 30 }, { w: 3, coins: 300, jackpot: true }
+      { w: 22, coins: 20 }, { w: 12, booster: 'locate', n: 1 }, { w: 18, coins: 50 }, { w: 7, booster: 'hint', n: 1 },
+      { w: 12, coins: 100 }, { w: 9, booster: 'locate', n: 2 }, { w: 17, coins: 30 }, { w: 3, coins: 300, jackpot: true }
     ]
   };
 
@@ -46,10 +47,10 @@
       v: 1,
       level: 1, stars: {}, best: {},
       coins: CFG.START_COINS,
-      boosters: { sniff: 0, fetch: 0, sweep: 0 },
+      boosters: { hint: 0, locate: 0 },
       boosterIntro: {},
       pups: CFG.STARTER_PUPS.slice(), newPups: [],
-      settings: { music: true, sfx: true, vibrate: true, automark: true, patterns: false, lang: 'en', tapMode: 'mark' },
+      settings: { music: true, sfx: true, vibrate: true, patterns: false, lang: 'en' },
       gift: { last: '', day: 0 },
       wheel: { date: '', free: false, ads: 0 },
       challenge: { date: '', streak: 0, lastDone: '' },
@@ -76,6 +77,12 @@
     // sanity
     d.level = Math.max(1, Math.min(CFG.LEVELS + 1, d.level | 0 || 1));
     d.coins = Math.max(0, d.coins | 0);
+    // v1.0/1.1 saves: Sniff + Fetch become Hint, Sweep becomes Locate
+    if (d.boosters.sniff != null || d.boosters.fetch != null || d.boosters.sweep != null) {
+      d.boosters = { hint: (d.boosters.sniff | 0) + (d.boosters.fetch | 0), locate: d.boosters.sweep | 0 };
+      d.boosterIntro = {};
+    }
+    delete d.settings.tapMode; delete d.settings.automark;
     CFG.BOOSTERS.forEach(function (b) { d.boosters[b] = Math.max(0, d.boosters[b] | 0); });
     if (!Array.isArray(d.pups)) d.pups = CFG.STARTER_PUPS.slice();
     return d;

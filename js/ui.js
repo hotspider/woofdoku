@@ -126,13 +126,10 @@
   }
 
   // ------------------------------------------------------------------ home
-  var SPEECH = {
-    en: ['Woof! Ready to play?', 'Tap a cell to mark ✕, double-tap to place a pup!', 'Pups can\'t touch — not even diagonally!', 'Every yard needs exactly one pup.', 'Stuck? Let my nose Sniff out a clue!', 'Collect all 12 pups in the album!', 'A new daily puzzle arrives every day!'],
-    zh: ['汪！准备好了吗？', '单击标 ✕，双击放狗狗！', '狗狗不能挨着——斜着也不行！', '每个院子恰好一只狗狗。', '卡住了？让我用鼻子嗅嗅线索！', '集齐图鉴里的 12 只狗狗吧！', '每天都有新的每日谜题！']
-  };
   function speech(text) {
     var el = $('h-speech');
-    el.textContent = text || SPEECH[I18n.lang][(Math.random() * SPEECH.en.length) | 0];
+    var lines = I18n.list('speech');
+    el.textContent = text || lines[(Math.random() * lines.length) | 0];
     el.classList.add('on');
     clearTimeout(speechTimer);
     speechTimer = setTimeout(function () { el.classList.remove('on'); }, 3800);
@@ -145,7 +142,7 @@
 
   function renderHome() {
     var d = Store.data, L = Math.min(C.LEVELS, d.level);
-    $('h-bg').style.backgroundImage = 'url(' + url('bg/' + C.CHAPTERS[chapterOf(L - 1)]) + ')';
+    $('h-bg').style.backgroundImage = 'url(' + url('bg/home') + ')';
     $('h-tag').textContent = T('tagline');
     $('h-play').querySelector('.t1').textContent = T('play');
     $('h-play').querySelector('.t2').textContent = d.level > C.LEVELS ? '★ ' + Store.totalStars() + ' / ' + C.LEVELS * 3 : T('level', { n: L });
@@ -167,7 +164,7 @@
     var box = $('h-box'), p = Math.min(C.BOX_STARS, d.box);
     box.querySelector('img').src = url('icon/gift');
     box.querySelector('.bar i').style.width = (p / C.BOX_STARS * 100) + '%';
-    box.querySelector('.bar span').textContent = T('treat_box') + ' · ' + T('box_progress', { a: p, b: C.BOX_STARS });
+    box.querySelector('.bar span').textContent = T('treat_box') + '  ★ ' + T('box_progress', { a: p, b: C.BOX_STARS });
     box.querySelector('.go').textContent = T('open');
     box.classList.toggle('ready', d.box >= C.BOX_STARS);
     refreshCoins();
@@ -292,7 +289,7 @@
   function playLevel(index) {
     index = Math.max(0, Math.min(C.LEVELS - 1, index));
     show('game', function () {
-      $('g-bg').style.backgroundImage = 'url(' + url('bg/' + C.CHAPTERS[chapterOf(index)]) + ')';
+      $('g-bg').style.backgroundImage = 'url(' + url('bg/play_' + C.CHAPTERS[chapterOf(index)]) + ')';
       Game.start({ mode: 'level', index: index });
       if (index === 0 && !Store.data.tut.rules) setTimeout(function () { showRules(function () { Store.data.tut.rules = true; Store.save(); }); }, 250);
     });
@@ -305,7 +302,7 @@
     }
     var pool = Assets.levels.daily, idx = ((Store.dayNumber() % pool.length) + pool.length) % pool.length;
     show('game', function () {
-      $('g-bg').style.backgroundImage = 'url(' + url('bg/' + C.CHAPTERS[Store.dayNumber() % C.CHAPTERS.length]) + ')';
+      $('g-bg').style.backgroundImage = 'url(' + url('bg/play_' + C.CHAPTERS[Store.dayNumber() % C.CHAPTERS.length]) + ')';
       Game.start({ mode: 'daily', index: idx });
     });
   }
@@ -664,7 +661,7 @@
   function openBox() {
     var d = Store.data;
     if (d.box < C.BOX_STARS) {
-      modal({ title: T('box_title'), color: 'blue', body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><p>' + esc(T('box_d')) + '</p><p><b>' + esc(T('box_progress', { a: d.box, b: C.BOX_STARS })) + '</b></p>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (h) { h.close(); } }] });
+      modal({ title: T('box_title'), color: 'blue', body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><p>' + esc(T('box_d', { n: C.BOX_STARS })) + '</p><div class="reward"><img alt="" src="' + url('icon/star') + '"><span class="st">' + esc(T('box_progress', { a: d.box, b: C.BOX_STARS })) + '</span></div>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (h) { h.close(); } }] });
       return;
     }
     d.box -= C.BOX_STARS;
@@ -721,9 +718,6 @@
     $('m-back').querySelector('img').src = url('icon/home');
     $('g-pause').querySelector('img').src = url('icon/pause');
     $('g-clock').src = url('icon/clock');
-    $('t-undo').querySelector('img').src = url('icon/undo');
-    $('t-clear').querySelector('img').src = url('icon/erase');
-    $('t-mode-pup').src = url('pup/corgi_idle');
     $('g-hand').src = url('icon/paw');
     C.BOOSTERS.forEach(function (id) { var b = $('b-' + id); b.querySelector('.slot img.bi').src = url('icon/' + id); b.querySelector('.slot img.lock').src = url('icon/lock'); });
     // hardware back button / swipe-back on Android: stay inside the game

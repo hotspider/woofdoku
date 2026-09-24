@@ -1,4 +1,4 @@
-/* Woofdoku — one puzzle session: placing pups, crosses, hearts, undo, boosters, tutorial coach,
+/* Woofdoku — one puzzle session: placing pups, crosses, hearts, Hint / Locate boosters, tutorial coach,
  * win / fail. Owns the game screen HUD; screens and dialogs live in ui.js.
  *
  *   Game.init()                                  wire DOM once
@@ -43,10 +43,6 @@
     if (u < 2 * n) return T('col_n', { n: u - n + 1 });
     return T('yard_c', { c: colorName(u - 2 * n) });
   }
-  function joinNames(list) {
-    if (list.length <= 1) return list.join('');
-    return list.slice(0, -1).join(I18n.lang === 'zh' ? '、' : ', ') + T('and') + list[list.length - 1];
-  }
   function unitCells(u) { return pb.units[u].slice(); }
 
   // ------------------------------------------------------------------ HUD
@@ -66,14 +62,6 @@
       btn.querySelector('.cnt').classList.toggle('plus', !locked && cnt <= 0);
       btn.querySelector('.lbl').textContent = T(id);
     });
-  }
-  function renderTools() {
-    var pm = Store.data.settings.tapMode === 'pup';
-    $('t-mode').classList.toggle('pup', pm);
-    $('t-mode').querySelector('.lbl').textContent = pm ? T('tap_pup') : T('tap_mark');
-    $('t-undo').querySelector('.lbl').textContent = T('undo');
-    $('t-clear').querySelector('.lbl').textContent = T('clear');
-    $('t-undo').classList.toggle('dim', !S || !S.undo.length);
   }
   function renderTitle() {
     var title = S.mode === 'daily' ? T('daily_puzzle') : T('level', { n: S.index + 1 });
@@ -111,86 +99,55 @@
   function tick() {
     if (!S || S.over || S.paused || document.hidden || UI.modalOpen()) return;
     S.time += 1; renderTime();
-    // stuck for a while? the Sniff button starts wagging
+    // stuck for a while? the Hint button starts wagging
     S.idle = (S.idle || 0) + 1;
-    if (S.idle === 25 && !S.tutorial && Store.boosterUnlocked('sniff')) $('b-sniff').classList.add('nudge');
+    if (S.idle === 25 && !S.tutorial && Store.boosterUnlocked('hint')) $('b-hint').classList.add('nudge');
   }
-  function active() { if (S) { S.idle = 0; $('b-sniff').classList.remove('nudge'); } }
+  function active() { if (S) { S.idle = 0; $('b-hint').classList.remove('nudge'); } }
 
   // ------------------------------------------------------------------ actions
-  function pushUndo(entry) { if (entry.cells.length) { S.undo.push(entry); if (S.undo.length > 200) S.undo.shift(); renderTools(); } }
+  // tap = ✕ on / off · double-tap = place a pup · swipe = ✕ many cells
   function setMark(i, v, delay) { S.marks[i] = v; bv.setMark(i, v, delay); }
   function interact() { active(); if (bv.hintSpec) bv.clearHint(); }
 
   function toggleMark(i) {
     if (S.pups[i]) { bv.nudge(i); Snd.play('yip', { i: (Math.random() * 6) | 0 }); return null; }
     if (S.marks[i] === 2) { bv.glowCells([i], 'rgba(255,255,255,0.9)', 0.4); return null; }
-    var before = S.marks[i], after = before ? 0 : 1;
-    setMark(i, after);
-    Snd.play(after ? 'mark' : 'unmark');
-    var e = { cells: [i], before: [before], after: [after] };
-    pushUndo(e);
+    var before = S.marks[i];
+    setMark(i, before ? 0 : 1);
+    Snd.play(before ? 'unmark' : 'mark');
     if (S.tutorial) coachSoon(DOUBLE * 1000 + 60);
-    return e;
+    return before;
   }
 
   function onTap(i) {
     if (!S || S.over || S.lock) return;
     Snd.unlock(); interact();
     var now = t();
-    if (Store.data.settings.tapMode === 'pup') { S.lastTap = null; placePup(i, 'tap'); return; }
     if (S.lastTap && S.lastTap.i === i && now - S.lastTap.t < DOUBLE) {
-      // double tap: revert the first tap's cross, then place
-      var e = S.lastTap.entry;
-      if (e && S.undo[S.undo.length - 1] === e) { S.undo.pop(); setMark(i, e.before[0]); renderTools(); }
+      // double tap: undo the first tap's ✕ toggle, then place
+      if (S.lastTap.before != null) setMark(i, S.lastTap.before);
       S.lastTap = null;
       placePup(i, 'tap');
       return;
     }
-    var entry = toggleMark(i);
-    S.lastTap = { i: i, t: now, entry: entry };
+    S.lastTap = { i: i, t: now, before: toggleMark(i) };
   }
   function onDrag(i, first) {
     if (!S || S.over || S.lock) return;
     interact();
     S.lastTap = null;
-    if (first) {
-      S.drag = { mode: S.marks[i] === 1 ? 'erase' : 'mark', entry: { cells: [], before: [], after: [] }, seen: {} };
-    }
+    if (first) S.drag = { mode: S.marks[i] === 1 ? 'erase' : 'mark', seen: {} };
     var d = S.drag;
     if (!d || d.seen[i]) return;
     d.seen[i] = 1;
     if (S.pups[i] || S.marks[i] === 2) return;
-    var before = S.marks[i], after = d.mode === 'mark' ? 1 : 0;
-    if (before === after) return;
+    var after = d.mode === 'mark' ? 1 : 0;
+    if (S.marks[i] === after) return;
     setMark(i, after);
-    d.entry.cells.push(i); d.entry.before.push(before); d.entry.after.push(after);
     Snd.play('paint');
   }
-  function onDragEnd() { if (S && S.drag) { pushUndo(S.drag.entry); S.drag = null; if (S.tutorial) coachSoon(); } }
-
-  function undo() {
-    if (!S || S.over || S.lock) return;
-    interact();
-    var e = S.undo.pop();
-    if (!e) { UI.toast(T('undo_empty')); return; }
-    for (var k = e.cells.length - 1; k >= 0; k--) {
-      var i = e.cells[k];
-      if (S.pups[i] || S.marks[i] === 2) continue;
-      setMark(i, e.before[k]);
-    }
-    Snd.play('undo'); renderTools();
-    if (S.tutorial) coachSoon();
-  }
-  function clearMarks() {
-    if (!S || S.over || S.lock) return;
-    interact();
-    var e = { cells: [], before: [], after: [] };
-    for (var i = 0; i < S.marks.length; i++) if (S.marks[i] === 1) { e.cells.push(i); e.before.push(1); e.after.push(0); setMark(i, 0); }
-    if (!e.cells.length) return;
-    pushUndo(e); Snd.play('clear');
-    if (S.tutorial) coachSoon();
-  }
+  function onDragEnd() { if (S && S.drag) { S.drag = null; if (S.tutorial) coachSoon(); } }
 
   function conflictReason(i, j) {
     var n = B.n, r = (i / n) | 0, c = i % n, rj = (j / n) | 0, cj = j % n;
@@ -201,7 +158,7 @@
   }
   function pupCount() { var k = 0; for (var i = 0; i < S.pups.length; i++) k += S.pups[i]; return k; }
 
-  // source: 'tap' | 'hint' | 'fetch'
+  // source: 'tap' | 'hint'
   function placePup(i, source) {
     if (S.pups[i]) { bv.nudge(i); Snd.play('yip', { i: (Math.random() * 6) | 0 }); return; }
     var j = Puzzle.conflictWith(B.n, B.reg, S.pups, i);
@@ -221,7 +178,7 @@
     Fx.burst(p.x, p.y, { n: 12, shapes: ['heart', 'paw', 'sparkle', 'dot'], colors: [col.dark, col.base, '#ffffff', '#ffd257'], speed: 240, gravity: 300, life: 0.8, size: 7 });
     Fx.ring(p.x, p.y, '#ffffff', bv.cellSize() * 0.9, 0.45);
     Store.data.stats.pups++;
-    // no automatic crosses: ruling cells out is the player's job (Sniff / Sweep can help)
+    // no automatic crosses: ruling cells out is the player's job (Hint / Locate can help)
     S.lastTap = null;
     if (k === B.n) { win(); return; }
     if (S.tutorial) {
@@ -261,13 +218,14 @@
   }
 
   // ------------------------------------------------------------------ boosters
-  function boosterAvailable(id) { return Store.boosterUnlocked(id); }
+  // Hint: reveals where a pup belongs (the pup logic would find next) and places it.
+  // Locate: finds a few blocked cells (no pup can go there) and crosses them out.
   function useBooster(id) {
     if (!S || S.over || S.lock) return;
     Snd.unlock(); interact();
-    if (!boosterAvailable(id)) { UI.toast(T('unlock_at', { n: Store.CFG.BOOSTER_UNLOCK[id] })); Snd.play('blocked'); return; }
+    if (!Store.boosterUnlocked(id)) { UI.toast(T('unlock_at', { n: Store.CFG.BOOSTER_UNLOCK[id] })); Snd.play('blocked'); return; }
     if ((Store.data.boosters[id] | 0) <= 0) { UI.boosterShop(id, function () { renderBoosters(); }); return; }
-    var ok = id === 'sniff' ? sniff() : id === 'fetch' ? fetch() : sweep();
+    var ok = id === 'hint' ? hint() : locate();
     if (ok) {
       Store.data.boosters[id]--; Store.data.stats.hints++; S.boostersUsed++; Store.save();
       renderBoosters();
@@ -276,99 +234,47 @@
     }
   }
 
-  function sniff() {
-    var st = Puzzle.nextStep(B.n, B.reg, S.pups, S.marks, B.sol);
-    if (!st) return false;
+  function hint() {
+    var h = Puzzle.hintPup(B.n, B.reg, S.pups, S.marks, B.sol);
+    if (!h || S.pups[h.place]) return false;
+    var target = h.place, sess = S;
     Snd.play('hint');
-    var cells = [], text = '', n = B.n, d = 0.25;
-    switch (st.t) {
-      case 'wrongmark':
-        cells = [st.cell]; text = T('h_wrongmark');
-        bv.hint({ cells: cells, target: st.cell });
-        setTimeout(function () { setMark(st.cell, 0); bv.glowCells([st.cell], 'rgba(255,120,120,0.8)', 0.6); }, 450);
-        break;
-      case 'mark':
-        cells = [st.cell].concat(st.elim); text = T('h_mark');
-        bv.hint({ cells: cells, elim: st.elim });
-        st.elim.forEach(function (q, k) { setMark(q, 2, d + k * 0.03); });
-        break;
-      case 'lone':
-      case 'reveal':
-        cells = unitCells(st.unit); text = st.t === 'lone' ? cap(T('h_lone', { unit: unitName(st.unit) })) : T('h_reveal');
-        bv.hint({ cells: cells, target: st.place });
-        var sess = S;
-        setTimeout(function () { if (S === sess && !S.over && !S.pups[st.place]) placePup(st.place, 'hint'); }, 700);
-        break;
-      case 'confine':
-        cells = unitCells(st.unit).concat(unitCells(st.line));
-        text = cap(T('h_confine', { unit: unitName(st.unit), line: unitName(st.line) }));
-        bv.hint({ cells: cells, elim: st.elim });
-        st.elim.forEach(function (q, k) { setMark(q, 2, d + 0.3 + k * 0.04); });
-        break;
-      case 'block':
-        cells = unitCells(st.unit).concat(st.elim);
-        text = cap(T('h_block', { unit: unitName(st.unit) }));
-        bv.hint({ cells: cells, elim: st.elim });
-        st.elim.forEach(function (q, k) { setMark(q, 2, d + 0.3 + k * 0.04); });
-        break;
-      case 'pair':
-      case 'group':
-        st.units.forEach(function (u) { cells = cells.concat(unitCells(u)); });
-        text = cap(T('h_group', { units: joinNames(st.units.map(unitName)), lines: joinNames(st.lines.map(unitName))}));
-        bv.hint({ cells: cells, elim: st.elim });
-        st.elim.forEach(function (q, k) { setMark(q, 2, d + 0.3 + k * 0.04); });
-        break;
-      case 'trial':
-        cells = st.elim.slice(); text = T('h_trial');
-        bv.hint({ cells: cells, elim: st.elim });
-        st.elim.forEach(function (q, k) { setMark(q, 2, d + 0.3 + k * 0.04); });
-        break;
-    }
-    // cells in the highlighted area that a pup already rules out get crossed too, so the board matches the explanation
-    var att = {};
-    for (var p = 0; p < S.pups.length; p++) if (S.pups[p]) pb.attack[p].forEach(function (q) { att[q] = 1; });
-    cells.forEach(function (q, k) { if (att[q] && !S.marks[q] && !S.pups[q] && q !== st.place) setMark(q, 2, d + k * 0.02); });
-    bubble(text, { face: 'pup/beagle_idle' });
-    void n;
-    return true;
-  }
-
-  function fetch() {
-    // the yard with the most open cells gets its pup
-    var best = -1, bestOpen = -1, g, i, n = B.n;
-    for (g = 0; g < n; g++) {
-      var cells = pb.units[2 * n + g], has = false, open = 0;
-      for (var k = 0; k < cells.length; k++) { if (S.pups[cells[k]]) has = true; if (!S.marks[cells[k]]) open++; }
-      if (!has && open > bestOpen) { bestOpen = open; best = g; }
-    }
-    if (best < 0) return false;
-    var target = -1;
-    pb.units[2 * n + best].forEach(function (q) { if (B.sol[q]) target = q; });
-    if (target < 0) return false;
-    Snd.play('fetch');
     S.lock = true;
-    var from = Fx.center($('b-fetch')), to = cellPos(target), sess = S;
-    Fx.fly('icon/bone', from, to, { size: 44, dur: 0.6, shrink: 0.2 }).then(function () {
+    Fx.fly('icon/hint', Fx.center($('b-hint')), cellPos(target), { size: 52, dur: 0.6, shrink: 0.3 }).then(function () {
       if (S !== sess || S.over) return;
-      S.lock = false;
-      if (S.marks[target]) setMark(target, 0);
-      placePup(target, 'fetch');
-      bubble(cap(T('h_fetch', { unit: unitName(2 * n + best) })), { face: 'pup/golden_joy', ms: 3500 });
+      bv.hint({ cells: [target], target: target });
+      var p = cellPos(target);
+      Fx.burst(p.x, p.y, { n: 16, shapes: ['sparkle', 'star'], colors: ['#fff6b0', '#ffd257', '#ffffff'], speed: 200, gravity: 120, life: 0.7 });
+      setTimeout(function () {
+        if (S !== sess || S.over) return;
+        S.lock = false;
+        if (S.marks[target]) setMark(target, 0);
+        Snd.play('fetch');
+        placePup(target, 'hint');
+        bubble(cap(T('h_hint', { unit: unitName(h.unit) })), { face: 'pup/corgi_joy', ms: 3000 });
+      }, 420);
     });
-    void i;
     return true;
   }
 
-  function sweep() {
-    var res = Puzzle.sweep(B.n, B.reg, S.pups, S.marks, B.sol);
-    if (!res.elim.length && !res.wrong.length) { UI.toast(T('nothing_sweep')); Snd.play('blocked'); return false; }
+  function locate() {
+    var count = Math.max(3, Math.round(B.n * 0.6));
+    var cells = Puzzle.locate(B.n, B.reg, S.pups, S.marks, B.sol, count);
+    if (!cells.length) { UI.toast(T('nothing_locate')); Snd.play('blocked'); return false; }
     Snd.play('sweep');
-    bv.sweepFx();
-    var n = B.n;
-    res.elim.forEach(function (q) { setMark(q, 2, 0.1 + ((q / n) | 0) * 0.075); });
-    res.wrong.forEach(function (q) { setTimeout(function () { setMark(q, 0); bv.glowCells([q], 'rgba(255,120,120,0.8)', 0.6); }, 400); });
-    var txt = T('h_sweep', { n: res.elim.length }) + (res.wrong.length ? ' ' + T('h_sweep_wrong', { n: res.wrong.length }) : '');
-    bubble(txt, { face: 'pup/samoyed_joy', ms: 3500 });
+    var from = Fx.center($('b-locate'));
+    cells.forEach(function (q, k) {
+      var p = cellPos(q);
+      setTimeout(function () {
+        if (!S) return;
+        setMark(q, 2);
+        bv.glowCells([q], 'rgba(120,200,255,0.85)', 0.7);
+        Fx.ring(p.x, p.y, '#7cd0ff', bv.cellSize() * 0.8, 0.45);
+        Snd.play('mark');
+      }, 250 + k * 120);
+    });
+    Fx.burst(from.x, from.y, { n: 10, shapes: ['sparkle'], colors: ['#bfeaff', '#ffffff'], speed: 160, gravity: 0, life: 0.5 });
+    bubble(T('h_locate', { n: cells.length }), { face: 'pup/husky_idle', ms: 3000 });
     return true;
   }
 
@@ -438,14 +344,6 @@
   var Game = {
     init: function () {
       bv = new BoardView($('board'), { onTap: onTap, onDrag: onDrag, onDragEnd: onDragEnd });
-      $('t-undo').addEventListener('click', function () { undo(); });
-      $('t-clear').addEventListener('click', function () { clearMarks(); });
-      $('t-mode').addEventListener('click', function () {
-        Snd.play('toggle');
-        Store.data.settings.tapMode = Store.data.settings.tapMode === 'pup' ? 'mark' : 'pup'; Store.save();
-        renderTools();
-        UI.toast(Store.data.settings.tapMode === 'pup' ? T('tap_pup') : T('tap_mark'));
-      });
       Store.CFG.BOOSTERS.forEach(function (id) { $('b-' + id).addEventListener('click', function () { useBooster(id); }); });
       $('g-pause').addEventListener('click', function () { if (S && !S.over) { Snd.play('tap'); Game.pause(); UI.showPause(); } });
       $('g-bubble').addEventListener('click', function () { if (!S || !S.tutorial) bubble(null); });
@@ -461,12 +359,12 @@
       pb = new Puzzle.Board(B.n, B.reg);
       S = {
         mode: mode, index: index, pups: new Uint8Array(B.n * B.n), marks: new Uint8Array(B.n * B.n),
-        hearts: Store.CFG.HEARTS, maxHearts: Store.CFG.HEARTS, time: 0, undo: [], lastTap: null, drag: null,
+        hearts: Store.CFG.HEARTS, maxHearts: Store.CFG.HEARTS, time: 0, lastTap: null, drag: null,
         over: false, lock: false, paused: false, continued: false, mistakes: 0, boostersUsed: 0,
         tutorial: mode === 'level' && index === 0 && !Store.data.tut.level1
       };
       bv.setLevel({ n: B.n, reg: B.reg, colors: B.colors, breeds: B.breeds, patterns: Store.data.settings.patterns });
-      renderTitle(); renderHearts(); renderTime(); renderBoosters(); renderTools(); bubble(null); showHand(null); active();
+      renderTitle(); renderHearts(); renderTime(); renderBoosters(); bubble(null); showHand(null); active();
       $('g-hearts').classList.toggle('tut', S.tutorial);
       layout();
       bv.start();
@@ -477,7 +375,6 @@
         if (!S) return;
         if (S.tutorial) coach();
         else if (mode === 'level' && lvl === 2 && !Store.data.tut.tipMark) { Store.data.tut.tipMark = true; Store.save(); bubble(T('tip_mark'), { face: 'pup/shiba_idle', ms: 7000 }); }
-        else if (mode === 'level' && lvl === 5 && !Store.data.tut.tipMode) { Store.data.tut.tipMode = true; Store.save(); bubble(T('tip_mode'), { face: 'pup/pug_idle', ms: 7000 }); }
         else if (mode === 'level') {
           Store.CFG.BOOSTERS.forEach(function (id) {
             if (lvl === Store.CFG.BOOSTER_UNLOCK[id] && !Store.data.boosterIntro[id]) {
@@ -501,7 +398,7 @@
       });
     },
     leave: function () { bv.stop(); showHand(null); S = null; },
-    refreshHud: function () { if (S) { renderBoosters(); renderTools(); renderTitle(); bv.setPatterns(Store.data.settings.patterns); } },
+    refreshHud: function () { if (S) { renderBoosters(); renderTitle(); bv.setPatterns(Store.data.settings.patterns); } },
     session: function () { return S; },
     // test hooks (used by tools/e2e.mjs)
     _debug: function () { return { S: S, B: B, bv: bv }; },
