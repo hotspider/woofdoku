@@ -291,7 +291,6 @@
     show('game', function () {
       $('g-bg').style.backgroundImage = 'url(' + url('bg/play_' + C.CHAPTERS[chapterOf(index)]) + ')';
       Game.start({ mode: 'level', index: index });
-      if (index === 0 && !Store.data.tut.rules) setTimeout(function () { showRules(function () { Store.data.tut.rules = true; Store.save(); }); }, 250);
     });
   }
   function playDaily() {

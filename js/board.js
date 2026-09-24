@@ -1,32 +1,34 @@
 /* Woofdoku — board renderer and touch input.
  *
+ * Look: a white card with one rounded tile per cell (small gaps, no borders); colour zones are
+ * told apart by tile colour only. ✕ marks are big white strokes that draw themselves.
+ *
  *   var bv = new BoardView(canvas, handlers)   handlers: onTap(i), onDrag(i, first), onDragEnd()
  *   bv.setLevel({ n, reg, colors, breeds, patterns })   colors[g] = palette index, breeds[g] = pup id
  *   bv.resize(cssSize)
- *   bv.setMark(i, v, delay)   v: 0 none, 1 player ✕, 2 certain ✕
- *   bv.placePup(i, opts) / bv.wrongPup(i) / bv.conflict(a, b) / bv.nudge(i)
- *   bv.hint(spec) / bv.clearHint()        spec: { units: [], cells: [], target: i, elim: [] }
+ *   bv.setMark(i, v, delay)   v: 0 none, 1 player ✕, 2 certain ✕ (Locate / wrong spot)
+ *   bv.placePup(i, opts) / bv.wrongPup(i) / bv.conflict(a, b) / bv.nudge(i) / bv.glowCells(cells, color, life)
+ *   bv.hint(spec) / bv.clearHint()        spec: { cells: [], target: i, mark: [] }
  *   bv.winWave() -> Promise
  *   bv.cellCenter(i) -> { x, y } in CSS px relative to the canvas
- *   BoardView.PALETTE, BoardView.assignColors(n, reg, seed), BoardView.drawMini(canvas, spec)
+ *   BoardView.PALETTE, BoardView.assignColors(n, reg, seed), BoardView.drawMini(canvas, spec), BoardView.drawRuleIcon(canvas, kind, size)
  */
 (function () {
   'use strict';
   var TAU = Math.PI * 2;
-  var INK = '#3d2615';
 
-  // one flat colour per yard (dark = ✕ marks and colour-blind symbols)
+  // one flat colour per zone; dark = colour-blind symbols
   var PALETTE = [
-    { base: '#ffb2ca', dark: '#d2416f' }, // 0 pink
-    { base: '#ffc795', dark: '#cf6c1c' }, // 1 peach
-    { base: '#ffe77e', dark: '#b48607' }, // 2 lemon
-    { base: '#b2e79c', dark: '#3f902c' }, // 3 mint
-    { base: '#9dd3ff', dark: '#2a78c4' }, // 4 sky
-    { base: '#cbb8ff', dark: '#6843cc' }, // 5 lilac
-    { base: '#92e2d6', dark: '#178a7e' }, // 6 aqua
-    { base: '#ff9a91', dark: '#c23d34' }, // 7 coral
-    { base: '#e5cfa6', dark: '#8f6a38' }, // 8 sand
-    { base: '#c7d0e4', dark: '#566584' }  // 9 cloud
+    { base: '#f58aaf', dark: '#b8386a' }, // 0 pink
+    { base: '#ffa95f', dark: '#b85d12' }, // 1 orange
+    { base: '#f7cd55', dark: '#9c7806' }, // 2 yellow
+    { base: '#86d277', dark: '#3a8a2c' }, // 3 green
+    { base: '#5db8ec', dark: '#1d6ea8' }, // 4 blue
+    { base: '#ab8ff2', dark: '#5a39b5' }, // 5 purple
+    { base: '#46c3b6', dark: '#127a6f' }, // 6 teal
+    { base: '#f07070', dark: '#a82a2a' }, // 7 red
+    { base: '#d7b486', dark: '#7d5a2c' }, // 8 tan
+    { base: '#a2b1c8', dark: '#4a5a78' }  // 9 gray
   ];
   // how alike two palette colours look (0 = very different)
   var SIM = {};
@@ -36,9 +38,9 @@
 
   function seeded(seed) { var a = seed | 0; return function () { a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
-  // palette index per yard: neighbouring yards get clearly different colours
+  // palette index per zone: every zone gets its own colour, neighbours clearly different
   function assignColors(n, reg, seed) {
-    var adj = [], g, h, i;
+    var adj = [], g, i;
     for (g = 0; g < n; g++) adj.push(new Array(n).fill(0));
     for (i = 0; i < n * n; i++) {
       var r = (i / n) | 0, c = i % n;
@@ -64,7 +66,6 @@
       }
       if (cur < bestC) { bestC = cur; best = p.slice(0, n); }
     }
-    void h;
     return best;
   }
 
@@ -90,80 +91,43 @@
     }
     x.fill('evenodd');
   }
-  function drawX(x, cx, cy, s, col, lw) {
-    x.lineCap = 'round';
-    x.beginPath(); x.moveTo(cx - s, cy - s); x.lineTo(cx + s, cy + s); x.moveTo(cx + s, cy - s); x.lineTo(cx - s, cy + s);
-    x.lineWidth = lw * 1.9; x.strokeStyle = 'rgba(255,255,255,0.75)'; x.stroke();
-    x.lineWidth = lw; x.strokeStyle = col; x.stroke();
-  }
-
-  // static layer: frame, cells, grid lines, yard borders
-  // wooden frame around the grid; returns the grid geometry
-  function drawFrame(x, S) {
-    var f = S * 0.052, R = S * 0.07, Ri = Math.max(4, S * 0.022), k;
-    rr(x, 0, 0, S, S, R); x.fillStyle = '#4a2a12'; x.fill();
-    var wg = x.createLinearGradient(0, 0, 0, S);
-    wg.addColorStop(0, '#f2b672'); wg.addColorStop(0.5, '#dc9551'); wg.addColorStop(1, '#bf7433');
-    rr(x, S * 0.009, S * 0.009, S * 0.982, S * 0.982, R * 0.88); x.fillStyle = wg; x.fill();
-    // grain in the frame ring only
-    x.save();
-    x.beginPath(); x.rect(0, 0, S, S); x.rect(f, f, S - 2 * f, S - 2 * f); x.clip('evenodd');
-    x.strokeStyle = 'rgba(120,60,20,0.28)'; x.lineWidth = Math.max(1, S * 0.0035);
-    function wave(horizontal, pos, ph) {
+  // big rounded ✕; k = draw progress 0..1 (first stroke, then the second)
+  function drawX(x, cx, cy, s, lw, col, k, shadow) {
+    if (k == null) k = 1;
+    var k1 = Math.min(1, k * 2), k2 = Math.max(0, k * 2 - 1);
+    function strokes() {
       x.beginPath();
-      for (var t = 0; t <= S; t += S / 40) {
-        var o = Math.sin(t / S * 18 + ph) * S * 0.003;
-        if (horizontal) { if (!t) x.moveTo(t, pos + o); else x.lineTo(t, pos + o); } else { if (!t) x.moveTo(pos + o, t); else x.lineTo(pos + o, t); }
-      }
-      x.stroke();
+      x.moveTo(cx - s, cy - s); x.lineTo(cx - s + 2 * s * k1, cy - s + 2 * s * k1);
+      if (k2 > 0) { x.moveTo(cx + s, cy - s); x.lineTo(cx + s - 2 * s * k2, cy - s + 2 * s * k2); }
     }
-    [0.36, 0.66].forEach(function (p, j) { wave(true, f * p, j * 2); wave(true, S - f * p, j * 3 + 1); wave(false, f * p, j + 4); wave(false, S - f * p, j * 2 + 5); });
-    x.restore();
-    rr(x, S * 0.016, S * 0.016, S * 0.968, S * 0.968, R * 0.8); x.lineWidth = Math.max(1.5, S * 0.005); x.strokeStyle = 'rgba(255,235,200,0.55)'; x.stroke();
-    // groove + nails
-    var gw = S * 0.012;
-    rr(x, f - gw, f - gw, S - 2 * f + 2 * gw, S - 2 * f + 2 * gw, Ri + gw); x.fillStyle = '#6a3a17'; x.fill();
-    [[f / 2, f / 2], [S - f / 2, f / 2], [f / 2, S - f / 2], [S - f / 2, S - f / 2]].forEach(function (p) {
-      x.beginPath(); x.arc(p[0], p[1], S * 0.011, 0, TAU); x.fillStyle = '#7a4518'; x.fill();
-      x.beginPath(); x.arc(p[0] - S * 0.003, p[1] - S * 0.003, S * 0.0045, 0, TAU); x.fillStyle = 'rgba(255,236,200,0.85)'; x.fill();
-    });
-    void k;
-    return { m: f, G: S - 2 * f, R: Ri };
+    x.lineCap = 'round'; x.lineWidth = lw;
+    if (shadow) { x.save(); x.translate(0, lw * 0.22); strokes(); x.strokeStyle = shadow; x.stroke(); x.restore(); }
+    strokes(); x.strokeStyle = col; x.stroke();
   }
 
-  // static layer: frame, flat yard colours, grid lines, yard borders
-  function drawStatic(x, S, n, reg, colors, patterns) {
-    var fr = drawFrame(x, S), m = fr.m, G = fr.G, c = G / n, R = fr.R, i, r, k;
+  // grid geometry inside a square canvas of S px
+  function geometry(S, n) {
+    var m = S * 0.04, G = S - 2 * m, c = G / n, gap = Math.max(2, c * 0.075);
+    return { m: m, G: G, c: c, gap: gap, ts: c - gap, tr: (c - gap) * 0.17, R: S * 0.055 };
+  }
+  // static layer: the white card
+  function drawCard(x, S) {
+    var R = S * 0.055;
     x.save();
-    rr(x, m, m, G, G, R); x.clip();
-    for (i = 0; i < n * n; i++) {
-      r = (i / n) | 0; k = i % n;
-      var col = PALETTE[colors[reg[i]]];
-      x.fillStyle = col.base; x.fillRect(m + k * c - 0.5, m + r * c - 0.5, c + 1, c + 1);
-      if (patterns) {
-        x.fillStyle = col.dark; x.globalAlpha = 0.35;
-        symbol(x, colors[reg[i]], m + k * c + c * 0.2, m + r * c + c * 0.2, c * 0.085);
-        x.globalAlpha = 1;
-      }
-    }
-    // thin grid
-    x.strokeStyle = 'rgba(70,40,20,0.17)'; x.lineWidth = Math.max(1, S / 380);
-    x.beginPath();
-    for (k = 1; k < n; k++) { x.moveTo(m + k * c, m); x.lineTo(m + k * c, m + G); x.moveTo(m, m + k * c); x.lineTo(m + G, m + k * c); }
-    x.stroke();
+    x.shadowColor = 'rgba(80,50,30,0.22)'; x.shadowBlur = S * 0.025; x.shadowOffsetY = S * 0.01;
+    rr(x, S * 0.012, S * 0.008, S * 0.976, S * 0.972, R); x.fillStyle = '#fffdf8'; x.fill();
     x.restore();
-    // yard borders
-    var bw = Math.max(2.5, c * 0.085);
-    x.strokeStyle = INK; x.lineWidth = bw; x.lineCap = 'round';
-    x.beginPath();
-    for (i = 0; i < n * n; i++) {
-      r = (i / n) | 0; k = i % n;
-      if (k + 1 < n && reg[i] !== reg[i + 1]) { x.moveTo(m + (k + 1) * c, m + r * c); x.lineTo(m + (k + 1) * c, m + (r + 1) * c); }
-      if (r + 1 < n && reg[i] !== reg[i + n]) { x.moveTo(m + k * c, m + (r + 1) * c); x.lineTo(m + (k + 1) * c, m + (r + 1) * c); }
-    }
-    x.stroke();
-    rr(x, m, m, G, G, R); x.lineWidth = bw * 1.15; x.stroke();
-    return { m: m, c: c, G: G, R: R };
+    rr(x, S * 0.012, S * 0.008, S * 0.976, S * 0.972, R); x.lineWidth = Math.max(1, S * 0.003); x.strokeStyle = 'rgba(190,150,110,0.35)'; x.stroke();
+  }
+  function tileRect(g, n, i, scale) {
+    var s = scale || 1, ts = g.ts * s, cx = g.m + (i % n + 0.5) * g.c, cy = g.m + (((i / n) | 0) + 0.5) * g.c;
+    return { x: cx - ts / 2, y: cy - ts / 2, s: ts, cx: cx, cy: cy, r: g.tr * s };
+  }
+  function drawTile(x, g, n, i, color, scale, patternsCol) {
+    var t = tileRect(g, n, i, scale);
+    rr(x, t.x, t.y, t.s, t.s, t.r); x.fillStyle = color.base; x.fill();
+    if (patternsCol != null) { x.fillStyle = 'rgba(255,255,255,0.55)'; symbol(x, patternsCol, t.x + t.s * 0.2, t.y + t.s * 0.2, t.s * 0.09); }
+    return t;
   }
 
   // ------------------------------------------------------------------ BoardView
@@ -172,7 +136,7 @@
     this.size = 300; this.dpr = 1; this.n = 0;
     this.stat = document.createElement('canvas');
     this.running = false; this.hintSpec = null; this.locked = false;
-    this.fx = []; // board-local effects
+    this.fx = [];
     this.pointer = null;
     var self = this;
     canvas.addEventListener('pointerdown', function (e) { self._down(e); });
@@ -191,10 +155,10 @@
     this.pup = new Uint8Array(N); this.pupT = new Float64Array(N).fill(-9);
     this.phase = []; for (var i = 0; i < N; i++) this.phase.push(Math.random() * TAU);
     this.blinkAt = new Float64Array(N); this.sad = {}; this.joy = null;
-    this.hintSpec = null; this.fx = []; this.locked = false; this.press = -1;
+    this.hintSpec = null; this.fx = []; this.locked = false; this.press = -1; this.pressAmt = new Float32Array(N);
     this._buildStatic();
   };
-  P.setPatterns = function (on) { this.patterns = !!on; this._buildStatic(); };
+  P.setPatterns = function (on) { this.patterns = !!on; };
   P.resize = function (css) {
     this.size = Math.max(120, Math.floor(css));
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -207,7 +171,8 @@
     this.stat.width = Math.round(S); this.stat.height = Math.round(S);
     var sx = this.stat.getContext('2d');
     sx.clearRect(0, 0, S, S);
-    this.geo = drawStatic(sx, S, this.n, this.reg, this.colors, this.patterns);
+    drawCard(sx, S);
+    this.geo = geometry(S, this.n);
   };
   P.cellCenter = function (i) {
     var g = this.geo, d = this.dpr, n = this.n;
@@ -238,9 +203,8 @@
   P.hint = function (spec) { this.hintSpec = spec; this.hintT = now(); };
   P.clearHint = function () { this.hintSpec = null; };
   P.winWave = function () {
-    var self = this;
     this.joy = now(); this.locked = true;
-    return new Promise(function (res) { setTimeout(res, 1500); void self; });
+    return new Promise(function (res) { setTimeout(res, 1500); });
   };
   P.resetJoy = function () { this.joy = null; };
 
@@ -253,8 +217,7 @@
     if (i < 0) return;
     try { this.cv.setPointerCapture(e.pointerId); } catch (err) {}
     this.pointer = { id: e.pointerId, start: i, cur: i, drag: false };
-    this.press = i; this.pressT = now();
-    if (this.h.onPress) this.h.onPress(i);
+    this.press = i;
   };
   P._move = function (e) {
     var pt = this.pointer;
@@ -263,7 +226,7 @@
     var p = this._pos(e), i = this.cellAt(p.x, p.y);
     if (i < 0 || i === pt.cur) return;
     if (!pt.drag) { pt.drag = true; if (this.h.onDrag) this.h.onDrag(pt.start, true); }
-    // fill in skipped cells along a fast swipe (same row/column interpolation)
+    // fill in skipped cells along a fast swipe
     var n = this.n, r0 = (pt.cur / n) | 0, c0 = pt.cur % n, r1 = (i / n) | 0, c1 = i % n;
     var steps = Math.max(Math.abs(r1 - r0), Math.abs(c1 - c0));
     for (var s = 1; s <= steps; s++) {
@@ -294,103 +257,84 @@
     if (!this.running) return;
     requestAnimationFrame(this._frame);
     if (!this.n || document.hidden) return;
-    var x = this.x, S = this.size * this.dpr, g = this.geo, n = this.n, t = now(), i, k;
+    var x = this.x, S = this.size * this.dpr, g = this.geo, n = this.n, N = n * n, t = now(), i, k, f, ft, self = this;
     x.setTransform(1, 0, 0, 1, 0, 0);
     x.clearRect(0, 0, S, S);
     x.drawImage(this.stat, 0, 0);
-    var c = g.c, m = g.m;
-    function cx(i) { return m + (i % n + 0.5) * c; }
-    function cy(i) { return m + (((i / n) | 0) + 0.5) * c; }
+    var c = g.c;
+    function cx(i) { return g.m + (i % n + 0.5) * c; }
+    function cy(i) { return g.m + (((i / n) | 0) + 0.5) * c; }
 
-    // hint highlight: a glowing golden outline around the involved cells (yard colours stay untouched)
-    var hs = this.hintSpec;
-    if (hs) {
-      var ht = t - this.hintT, pulse = 0.5 + 0.5 * Math.sin(ht * 5);
-      var inv = {};
-      (hs.cells || []).forEach(function (j) { inv[j] = 1; });
-      x.save();
-      x.lineCap = 'round'; x.lineJoin = 'round';
-      x.beginPath();
-      for (i = 0; i < n * n; i++) {
-        if (!inv[i]) continue;
-        var r1 = (i / n) | 0, c1 = i % n, px0 = m + c1 * c, py0 = m + r1 * c;
-        if (r1 === 0 || !inv[i - n]) { x.moveTo(px0, py0); x.lineTo(px0 + c, py0); }
-        if (r1 === n - 1 || !inv[i + n]) { x.moveTo(px0, py0 + c); x.lineTo(px0 + c, py0 + c); }
-        if (c1 === 0 || !inv[i - 1]) { x.moveTo(px0, py0); x.lineTo(px0, py0 + c); }
-        if (c1 === n - 1 || !inv[i + 1]) { x.moveTo(px0 + c, py0); x.lineTo(px0 + c, py0 + c); }
+    var hs = this.hintSpec, ht = hs ? t - this.hintT : 0, pulse = 0.5 + 0.5 * Math.sin(ht * 5), inv = {};
+    if (hs) (hs.cells || []).forEach(function (j) { inv[j] = 1; });
+    var joyT = this.joy != null ? t - this.joy : -1;
+
+    // tiles (pressed tiles sink a little; highlighted tiles glow)
+    for (i = 0; i < N; i++) {
+      var target = this.press === i && !this.locked ? 1 : 0;
+      this.pressAmt[i] += (target - this.pressAmt[i]) * 0.35;
+      var sc = 1 - 0.07 * this.pressAmt[i];
+      if (joyT >= 0) { var dj = joyT - (((i / n) | 0) + i % n) * 0.05; if (dj > 0 && dj < 0.4) sc *= 1 + 0.08 * Math.sin(dj / 0.4 * Math.PI); }
+      var col = PALETTE[this.colors[this.reg[i]]];
+      if (inv[i]) {
+        x.save(); x.shadowColor = 'rgba(255,196,40,' + (0.75 + 0.25 * pulse) + ')'; x.shadowBlur = c * (0.28 + 0.12 * pulse);
+        var tr1 = tileRect(g, n, i, sc); rr(x, tr1.x, tr1.y, tr1.s, tr1.s, tr1.r); x.fillStyle = col.base; x.fill();
+        x.restore();
       }
-      x.shadowColor = 'rgba(255,190,30,0.95)'; x.shadowBlur = c * 0.3;
-      x.lineWidth = Math.max(4, c * 0.13); x.strokeStyle = 'rgba(255,208,60,' + (0.55 + 0.45 * pulse) + ')'; x.stroke();
-      x.shadowBlur = 0; x.lineWidth = Math.max(1.5, c * 0.04); x.strokeStyle = 'rgba(255,255,230,0.9)'; x.stroke();
-      x.restore();
-      if (hs.mark) { // cells the player should cross out (tutorial)
-        x.globalAlpha = 0.35 + 0.35 * pulse;
-        var self = this;
-        hs.mark.forEach(function (j) { if (!self.mark[j]) drawX(x, cx(j), cy(j), c * 0.15, '#ffffff', Math.max(2, c * 0.08)); });
-        x.globalAlpha = 1;
-      }
-      if (hs.elim) {
-        x.lineWidth = Math.max(2, c * 0.06); x.strokeStyle = 'rgba(255,90,90,' + (0.5 + 0.5 * pulse) + ')';
-        hs.elim.forEach(function (j) { rr(x, m + (j % n) * c + c * 0.08, m + ((j / n) | 0) * c + c * 0.08, c * 0.84, c * 0.84, c * 0.18); x.stroke(); });
-      }
-      if (hs.target != null) {
-        var j = hs.target;
-        x.lineWidth = Math.max(3, c * 0.09); x.strokeStyle = 'rgba(255,196,40,' + (0.6 + 0.4 * pulse) + ')';
-        rr(x, m + (j % n) * c + c * 0.06, m + ((j / n) | 0) * c + c * 0.06, c * 0.88, c * 0.88, c * 0.2); x.stroke();
-        x.fillStyle = 'rgba(255,240,150,' + (0.25 + 0.25 * pulse) + ')'; x.fill();
-      }
+      var tr = drawTile(x, g, n, i, col, sc, this.patterns ? this.colors[this.reg[i]] : null);
+      if (inv[i]) { rr(x, tr.x + 1.5, tr.y + 1.5, tr.s - 3, tr.s - 3, tr.r); x.lineWidth = Math.max(2, c * 0.05); x.strokeStyle = 'rgba(255,248,210,' + (0.55 + 0.4 * pulse) + ')'; x.stroke(); }
+    }
+    if (hs && hs.target != null) {
+      var tt = tileRect(g, n, hs.target, 1.02 + 0.03 * pulse);
+      rr(x, tt.x - 2, tt.y - 2, tt.s + 4, tt.s + 4, tt.r + 2); x.lineWidth = Math.max(3, c * 0.075); x.strokeStyle = 'rgba(255,190,20,' + (0.7 + 0.3 * pulse) + ')'; x.stroke();
     }
 
-    // press feedback
-    if (this.press >= 0 && !this.locked) {
-      i = this.press;
-      x.fillStyle = 'rgba(255,255,255,0.35)';
-      rr(x, m + (i % n) * c + 2, m + ((i / n) | 0) * c + 2, c - 4, c - 4, c * 0.18); x.fill();
-    }
-
-    // board effects under the pieces
+    // transient effects on tiles
     for (k = this.fx.length - 1; k >= 0; k--) {
-      var f = this.fx[k], ft = (t - f.t) / f.life;
+      f = this.fx[k]; ft = (t - f.t) / f.life;
       if (ft >= 1) { this.fx.splice(k, 1); continue; }
       if (ft < 0) continue;
       if (f.kind === 'red') {
-        x.fillStyle = 'rgba(255,70,70,' + (0.45 * (1 - ft)) + ')';
-        rr(x, m + (f.i % n) * c + 1, m + ((f.i / n) | 0) * c + 1, c - 2, c - 2, c * 0.18); x.fill();
+        var rt = tileRect(g, n, f.i); rr(x, rt.x, rt.y, rt.s, rt.s, rt.r); x.fillStyle = 'rgba(255,60,60,' + (0.5 * (1 - ft)) + ')'; x.fill();
       } else if (f.kind === 'conflict') {
         var a = Math.sin(ft * Math.PI * 4) > -0.2 ? (1 - ft) : 0;
-        x.fillStyle = 'rgba(255,70,70,' + (0.35 * a) + ')';
-        [f.a, f.b].forEach(function (q) { rr(x, m + (q % n) * c + 1, m + ((q / n) | 0) * c + 1, c - 2, c - 2, c * 0.18); x.fill(); });
-        x.strokeStyle = 'rgba(230,50,60,' + a + ')'; x.lineWidth = Math.max(2.5, c * 0.07); x.setLineDash([c * 0.12, c * 0.1]); x.lineCap = 'round';
+        [f.a, f.b].forEach(function (q) { var qt = tileRect(g, n, q); rr(x, qt.x, qt.y, qt.s, qt.s, qt.r); x.fillStyle = 'rgba(255,60,60,' + (0.4 * a) + ')'; x.fill(); });
+        x.strokeStyle = 'rgba(220,40,50,' + a + ')'; x.lineWidth = Math.max(2.5, c * 0.07); x.setLineDash([c * 0.12, c * 0.1]); x.lineCap = 'round';
         x.beginPath(); x.moveTo(cx(f.a), cy(f.a)); x.lineTo(cx(f.b), cy(f.b)); x.stroke(); x.setLineDash([]);
       } else if (f.kind === 'glow') {
-        x.fillStyle = f.color; x.globalAlpha = 0.55 * Math.sin(ft * Math.PI);
-        f.cells.forEach(function (q) { rr(x, m + (q % n) * c + 1, m + ((q / n) | 0) * c + 1, c - 2, c - 2, c * 0.18); x.fill(); });
+        x.globalAlpha = 0.6 * Math.sin(ft * Math.PI); x.fillStyle = f.color;
+        f.cells.forEach(function (q) { var qt = tileRect(g, n, q); rr(x, qt.x, qt.y, qt.s, qt.s, qt.r); x.fill(); });
         x.globalAlpha = 1;
       }
     }
 
-    // marks
-    for (i = 0; i < n * n; i++) {
+    // ✕ marks: big white strokes that draw themselves
+    var xs = c * 0.21, xw = Math.max(3, c * 0.13);
+    for (i = 0; i < N; i++) {
       if (!this.mark[i]) continue;
       var mt = t - this.markT[i];
       if (mt < 0) continue;
-      var sc = mt < 0.22 ? easeOutBack(mt / 0.22) : 1;
-      var dark = PALETTE[this.colors[this.reg[i]]].dark;
-      x.globalAlpha = this.mark[i] === 2 ? 0.55 : 0.92;
-      drawX(x, cx(i), cy(i), c * (this.mark[i] === 2 ? 0.13 : 0.155) * sc, dark, Math.max(2, c * (this.mark[i] === 2 ? 0.07 : 0.085)));
+      var prog = clamp01(mt / 0.2), msc = 1 - 0.07 * this.pressAmt[i];
+      x.globalAlpha = this.mark[i] === 2 ? 0.82 : 1;
+      drawX(x, cx(i), cy(i), xs * msc * (this.mark[i] === 2 ? 0.9 : 1), xw * msc, '#ffffff', prog, 'rgba(60,30,10,0.16)');
+      x.globalAlpha = 1;
+    }
+    if (hs && hs.mark) { // tiles the player should cross out (tutorial): ghost ✕
+      x.globalAlpha = 0.3 + 0.35 * pulse;
+      hs.mark.forEach(function (j) { if (!self.mark[j] && !self.pup[j]) drawX(x, cx(j), cy(j), xs, xw, '#ffffff', 1); });
       x.globalAlpha = 1;
     }
 
     // pups
     var nudges = {};
-    this.fx.forEach(function (f) { if (f.kind === 'nudge') nudges[f.i] = (t - f.t) / f.life; });
-    var joyT = this.joy != null ? t - this.joy : -1;
-    for (i = 0; i < n * n; i++) {
+    this.fx.forEach(function (f2) { if (f2.kind === 'nudge') nudges[f2.i] = (t - f2.t) / f2.life; });
+    var psz = g.ts * 1.3;
+    for (i = 0; i < N; i++) {
       var isSad = this.sad[i] != null;
       if (!this.pup[i] && !isSad) continue;
       var breed = this.breeds[this.reg[i]], expr = 'idle', pt2 = t - (isSad ? this.sad[i] : this.pupT[i]);
       if (pt2 < 0) continue;
-      var s2 = 1, ox = 0, oy = 0, alpha = 1, rot = 0;
+      var s2 = 1, ox = 0, oy = 0, alpha = 1, rot = 0, sy2 = 1;
       if (isSad) {
         expr = 'sad';
         s2 = pt2 < 0.25 ? easeOutBack(pt2 / 0.25) : 1;
@@ -399,33 +343,21 @@
         if (pt2 > 1.25) { delete this.sad[i]; continue; }
       } else {
         s2 = pt2 < 0.42 ? easeOutBack(pt2 / 0.42) : 1;
-        // idle breathing + blink
-        var sy2 = 1 + 0.025 * Math.sin(t * 2.4 + this.phase[i]);
+        sy2 = 1 + 0.025 * Math.sin(t * 2.4 + this.phase[i]);
         if (t > this.blinkAt[i]) { if (t > this.blinkAt[i] + 0.16) this.blinkAt[i] = t + 2.5 + Math.random() * 4; else expr = 'blink'; }
         if (pt2 < 0.6) expr = 'joy';
         if (joyT >= 0) {
-          var r0 = (i / n) | 0, d = joyT - r0 * 0.08;
-          if (d > 0 && d < 0.5) { oy = -Math.sin(d / 0.5 * Math.PI) * c * 0.28; }
+          var d = joyT - ((i / n) | 0) * 0.08;
+          if (d > 0 && d < 0.5) oy = -Math.sin(d / 0.5 * Math.PI) * c * 0.28;
           if (d > 0) expr = 'joy';
         }
-        if (nudges[i] != null) { rot = Math.sin(nudges[i] * Math.PI * 5) * 0.18 * (1 - nudges[i]); }
-        x.save(); x.translate(cx(i), cy(i) + c * 0.38);
-        x.fillStyle = 'rgba(90,50,30,0.14)'; x.beginPath(); x.ellipse(0, 0, c * 0.3 * s2, c * 0.08 * s2, 0, 0, TAU); x.fill();
-        x.restore();
-        var img0 = window.Assets && Assets.img('pup/' + breed + '_' + expr);
-        if (img0) {
-          var sz0 = c * 1.13;
-          x.save(); x.translate(cx(i) + ox, cy(i) + oy + c * 0.02); x.rotate(rot); x.scale(s2 * (2 - sy2), s2 * sy2);
-          x.drawImage(img0, -sz0 / 2, -sz0 / 2 - c * 0.02, sz0, sz0);
-          x.restore();
-        }
-        continue;
+        if (nudges[i] != null) rot = Math.sin(nudges[i] * Math.PI * 5) * 0.18 * (1 - nudges[i]);
+        s2 *= 1 - 0.07 * this.pressAmt[i];
       }
       var img = window.Assets && Assets.img('pup/' + breed + '_' + expr);
       if (!img) continue;
-      var sz = c * 1.13;
-      x.save(); x.globalAlpha = alpha; x.translate(cx(i) + ox, cy(i) + oy); x.rotate(rot); x.scale(s2, s2);
-      x.drawImage(img, -sz / 2, -sz / 2, sz, sz);
+      x.save(); x.globalAlpha = alpha; x.translate(cx(i) + ox, cy(i) + oy); x.rotate(rot); x.scale(s2 * (2 - sy2), s2 * sy2);
+      x.drawImage(img, -psz / 2, -psz / 2 - c * 0.02, psz, psz);
       x.restore();
     }
 
@@ -437,31 +369,55 @@
       x.beginPath(); x.arc(cx(f.i), cy(f.i), c * (0.3 + 0.45 * ft), 0, TAU); x.stroke();
     }
     if (joyT >= 0 && joyT < 1.6) {
-      x.save(); rr(x, m, m, g.G, g.G, g.R); x.lineWidth = c * 0.12 * (1 - joyT / 1.6);
-      x.strokeStyle = 'rgba(255,215,90,' + (1 - joyT / 1.6) + ')'; x.stroke(); x.restore();
+      rr(x, S * 0.012, S * 0.008, S * 0.976, S * 0.972, g.R); x.lineWidth = c * 0.12 * (1 - joyT / 1.6);
+      x.strokeStyle = 'rgba(255,205,70,' + (1 - joyT / 1.6) + ')'; x.stroke();
     }
   };
 
-  // static illustration of a small board (rules / tutorial cards)
+  // static illustration of a small board (how-to-play cards)
   BoardView.drawMini = function (canvas, spec) {
     var dpr = Math.min(window.devicePixelRatio || 1, 3), css = spec.size || 150, S = Math.round(css * dpr);
     canvas.width = S; canvas.height = S; canvas.style.width = css + 'px'; canvas.style.height = css + 'px';
-    var x = canvas.getContext('2d'), n = spec.n, reg = spec.reg;
-    var geo = drawStatic(x, S, n, reg, spec.colors, false), m = geo.m, c = geo.c;
-    function cx(i) { return m + (i % n + 0.5) * c; }
-    function cy(i) { return m + (((i / n) | 0) + 0.5) * c; }
-    (spec.glow || []).forEach(function (i) { x.fillStyle = 'rgba(255,245,160,0.7)'; rr(x, m + (i % n) * c + 2, m + ((i / n) | 0) * c + 2, c - 4, c - 4, c * 0.2); x.fill(); });
-    (spec.red || []).forEach(function (i) { x.fillStyle = 'rgba(255,120,120,0.55)'; rr(x, m + (i % n) * c + 2, m + ((i / n) | 0) * c + 2, c - 4, c - 4, c * 0.2); x.fill(); });
-    (spec.marks || []).forEach(function (i) { drawX(x, cx(i), cy(i), c * 0.15, PALETTE[spec.colors[reg[i]]].dark, Math.max(2, c * 0.085)); });
+    var x = canvas.getContext('2d'), n = spec.n, reg = spec.reg, g = geometry(S, n), i;
+    drawCard(x, S);
+    var glow = {}, red = {};
+    (spec.glow || []).forEach(function (q) { glow[q] = 1; });
+    (spec.red || []).forEach(function (q) { red[q] = 1; });
+    for (i = 0; i < n * n; i++) {
+      var col = PALETTE[spec.colors[reg[i]]];
+      if (glow[i]) { x.save(); x.shadowColor = 'rgba(255,196,40,0.95)'; x.shadowBlur = g.c * 0.3; var t0 = tileRect(g, n, i); rr(x, t0.x, t0.y, t0.s, t0.s, t0.r); x.fillStyle = col.base; x.fill(); x.restore(); }
+      var t = drawTile(x, g, n, i, col, 1, null);
+      if (red[i]) { rr(x, t.x, t.y, t.s, t.s, t.r); x.fillStyle = 'rgba(255,70,70,0.45)'; x.fill(); }
+    }
+    (spec.marks || []).forEach(function (q) { var t = tileRect(g, n, q); drawX(x, t.cx, t.cy, g.c * 0.2, Math.max(2, g.c * 0.12), '#ffffff', 1, 'rgba(60,30,10,0.16)'); });
     (spec.pups || []).forEach(function (p) {
-      var img = window.Assets && Assets.img('pup/' + p[1] + '_' + (p[2] || 'idle'));
-      if (img) x.drawImage(img, cx(p[0]) - c * 0.565, cy(p[0]) - c * 0.565, c * 1.13, c * 1.13);
+      var img = window.Assets && Assets.img('pup/' + p[1] + '_' + (p[2] || 'idle')), t = tileRect(g, n, p[0]), s = g.ts * 1.3;
+      if (img) x.drawImage(img, t.cx - s / 2, t.cy - s / 2, s, s);
     });
     if (spec.lines) {
-      x.strokeStyle = 'rgba(230,50,60,0.85)'; x.lineWidth = Math.max(2.5, c * 0.07); x.setLineDash([c * 0.12, c * 0.1]); x.lineCap = 'round';
-      spec.lines.forEach(function (l) { x.beginPath(); x.moveTo(cx(l[0]), cy(l[0])); x.lineTo(cx(l[1]), cy(l[1])); x.stroke(); });
+      x.strokeStyle = 'rgba(220,40,50,0.9)'; x.lineWidth = Math.max(2.5, g.c * 0.07); x.setLineDash([g.c * 0.12, g.c * 0.1]); x.lineCap = 'round';
+      spec.lines.forEach(function (l) { var a = tileRect(g, n, l[0]), b = tileRect(g, n, l[1]); x.beginPath(); x.moveTo(a.cx, a.cy); x.lineTo(b.cx, b.cy); x.stroke(); });
       x.setLineDash([]);
     }
+  };
+
+  // 3×3 rule icons for the rule cards: 'color' | 'line' | 'touch'
+  var RULE_ICONS = {
+    color: { zone: [1, 1, 1, 1, 1, 0, 1, 0, 0], x: [0, 1, 2, 3, 6], pup: 4 },
+    line: { zone: [0, 0, 0, 0, 0, 0, 0, 0, 0], x: [0, 2, 4, 7], pup: 1 },
+    touch: { zone: [0, 0, 0, 0, 0, 0, 0, 0, 0], x: [0, 1, 2, 3, 5, 6, 7, 8], pup: 4 }
+  };
+  BoardView.drawRuleIcon = function (canvas, kind, css) {
+    var dpr = Math.min(window.devicePixelRatio || 1, 3), S = Math.round(css * dpr), spec = RULE_ICONS[kind];
+    canvas.width = S; canvas.height = S; canvas.style.width = css + 'px'; canvas.style.height = css + 'px';
+    var x = canvas.getContext('2d'), c = S / 3, gap = Math.max(1, c * 0.12), ts = c - gap;
+    for (var i = 0; i < 9; i++) {
+      var px = (i % 3) * c + gap / 2, py = ((i / 3) | 0) * c + gap / 2;
+      rr(x, px, py, ts, ts, ts * 0.18); x.fillStyle = kind === 'color' ? (spec.zone[i] ? '#f0a860' : '#ecd9bf') : '#e3c49a'; x.fill();
+      if (spec.x.indexOf(i) >= 0) drawX(x, px + ts / 2, py + ts / 2, ts * 0.26, Math.max(1.5, ts * 0.17), kind === 'color' ? '#ffffff' : '#9a6436', 1);
+    }
+    var img = window.Assets && Assets.img('pup/corgi_idle');
+    if (img) { var q = spec.pup, s = ts * 1.35; x.drawImage(img, (q % 3) * c + c / 2 - s / 2, ((q / 3) | 0) * c + c / 2 - s / 2, s, s); }
   };
 
   BoardView.PALETTE = PALETTE;

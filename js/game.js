@@ -51,6 +51,22 @@
     for (var k = 0; k < S.maxHearts; k++) h += '<img class="heart' + (k < S.hearts ? '' : ' off') + (k === breakIdx ? ' breaking' : '') + '" src="' + Assets.url(k < S.hearts ? 'icon/heart' : 'icon/heart_empty') + '" alt="">';
     el.innerHTML = h;
   }
+  // one head per colour zone: coloured once that zone has its pup
+  function renderPups(justGot) {
+    var el = $('g-pups'), n = B.n, h = '', has = {};
+    for (var i = 0; i < S.pups.length; i++) if (S.pups[i]) has[B.reg[i]] = 1;
+    el.style.setProperty('--pw', (n <= 6 ? 26 : n <= 8 ? 22 : 19) + 'px');
+    for (var g = 0; g < n; g++) h += '<img alt="" class="' + (has[g] ? (g === justGot ? 'got' : '') : 'off') + '" src="' + Assets.url('pup/' + B.breeds[g] + '_idle') + '">';
+    el.innerHTML = h;
+  }
+  function renderRules() {
+    var on = S.mode === 'level' && S.index < 3;
+    $('g-rules').classList.toggle('on', on);
+    ['color', 'line', 'touch'].forEach(function (r) { document.querySelector('#g-rules [data-r="' + r + '"] span').textContent = T('rc_' + r); });
+  }
+  function setRule(r) {
+    document.querySelectorAll('#g-rules .rulecard').forEach(function (el) { el.classList.toggle('on', el.getAttribute('data-r') === r); });
+  }
   function fmtTime(s) { s = Math.floor(s); var m = Math.floor(s / 60); return (m < 10 ? '0' : '') + m + ':' + (s % 60 < 10 ? '0' : '') + (s % 60); }
   function renderTime() { $('g-time').textContent = fmtTime(S.time); }
   function renderBoosters() {
@@ -178,11 +194,12 @@
     Fx.burst(p.x, p.y, { n: 12, shapes: ['heart', 'paw', 'sparkle', 'dot'], colors: [col.dark, col.base, '#ffffff', '#ffd257'], speed: 240, gravity: 300, life: 0.8, size: 7 });
     Fx.ring(p.x, p.y, '#ffffff', bv.cellSize() * 0.9, 0.45);
     Store.data.stats.pups++;
+    renderPups(B.reg[i]);
     // no automatic crosses: ruling cells out is the player's job (Hint / Locate can help)
     S.lastTap = null;
     if (k === B.n) { win(); return; }
     if (S.tutorial) {
-      if (k === 1) { S.tutStage = 'mark'; S.tutPup = i; S.tutMark = pb.attack[i].filter(function (q) { return !S.pups[q]; }); }
+      if (k === 1) { S.tutStage = 'row'; S.tutPup = i; }
       setTimeout(coach, 650);
     }
   }
@@ -279,8 +296,12 @@
   }
 
   // ------------------------------------------------------------------ tutorial coach (level 1)
-  // Stage 1: place the first pup. Stage 2: cross out every cell it rules out (teaches ✕ by tapping /
-  // dragging). Stage 3+: the coach points at each remaining forced spot.
+  // First-time guide (level 1): the rule cards light up one at a time.
+  //   place1  one pup per colour zone  -> double-tap the 1-tile zone
+  //   row     one per row & column     -> cross out the pup's row and column
+  //   touch   pups can't touch          -> cross out the tiles around it
+  //   zone    one per colour zone       -> cross out the rest of its zone (if any)
+  //   next    the coach points at each remaining forced tile
   var hand = null, coachTimer = 0;
   function showHand(i, single) {
     if (!hand) hand = $('g-hand');
@@ -291,24 +312,38 @@
     hand.classList.add('on');
   }
   function coachSoon(ms) { clearTimeout(coachTimer); coachTimer = setTimeout(coach, ms || 160); }
+  function tutCells(stage) {
+    var n = B.n, p = S.tutPup, r = (p / n) | 0, c = p % n, out = [];
+    for (var i = 0; i < n * n; i++) {
+      if (i === p) continue;
+      var ri = (i / n) | 0, ci = i % n, line = ri === r || ci === c, near = Math.abs(ri - r) <= 1 && Math.abs(ci - c) <= 1, zone = B.reg[i] === B.reg[p];
+      if (stage === 'row' && line) out.push(i);
+      else if (stage === 'touch' && near && !line) out.push(i);
+      else if (stage === 'zone' && zone && !line && !near) out.push(i);
+    }
+    return out;
+  }
+  var STAGE_RULE = { row: 'line', touch: 'touch', zone: 'color' }, STAGE_NEXT = { row: 'touch', touch: 'zone', zone: 'next' };
   function coach() {
     if (!S || !S.tutorial || S.over) return;
-    if (S.tutStage === 'mark') {
-      var todo = S.tutMark.filter(function (q) { return !S.marks[q] && !S.pups[q]; });
+    var st, guard;
+    while (STAGE_RULE[S.tutStage]) {
+      var cells = tutCells(S.tutStage), todo = cells.filter(function (q) { return !S.marks[q] && !S.pups[q]; });
       if (todo.length) {
-        bv.hint({ cells: S.tutMark.concat([S.tutPup]), mark: todo });
-        bubble(T('tut_mark'), { face: 'pup/corgi_idle' });
+        setRule(STAGE_RULE[S.tutStage]);
+        bv.hint({ cells: cells.concat([S.tutPup]), mark: todo });
+        bubble(T('tut_' + S.tutStage), { face: 'pup/corgi_idle' });
         showHand(todo[0], true);
         return;
       }
-      S.tutStage = 'place';
-      Snd.play('reward');
+      if (cells.length) Snd.play('reward');
+      S.tutStage = STAGE_NEXT[S.tutStage];
+      S.tutJustMarked = true;
     }
-    // cells ruled out by pups count as crossed out from here on (the lesson has been learned)
+    // placements: tiles a pup already blocks count as crossed out from here on
     var virt = S.marks.slice();
     for (var p = 0; p < S.pups.length; p++) if (S.pups[p]) pb.attack[p].forEach(function (q) { if (!virt[q]) virt[q] = 2; });
-    var st = null;
-    for (var guard = 0; guard < 20; guard++) {
+    for (guard = 0; guard < 20; guard++) {
       st = Puzzle.nextStep(B.n, B.reg, S.pups, virt, B.sol);
       if (!st) return;
       if (st.t === 'wrongmark') { setMark(st.cell, 0); virt[st.cell] = 0; bv.glowCells([st.cell], 'rgba(255,120,120,0.8)', 0.6); continue; }
@@ -316,16 +351,19 @@
       (st.elim || []).forEach(function (q) { virt[q] = 2; });
     }
     if (!st || st.place == null) return;
-    var first = pupCount() === 0;
+    var first = pupCount() === 0, yard = st.unit >= 2 * B.n;
+    setRule(yard ? 'color' : 'line');
     bv.hint({ cells: unitCells(st.unit), target: st.place });
-    bubble(first ? T('tut_1') : (S.tutStage === 'place' && pupCount() === 1 ? T('tut_marked') + ' ' : '') + cap(T('tut_next', { unit: unitName(st.unit) })), { face: 'pup/corgi_joy' });
+    var msg = first ? T('tut_1', { unit: cap(unitName(st.unit)) }) : cap(T('tut_next', { unit: unitName(st.unit) }));
+    if (S.tutJustMarked) { msg = T('tut_marked') + ' ' + msg; S.tutJustMarked = false; }
+    bubble(msg, { face: 'pup/corgi_joy' });
     showHand(st.place);
   }
 
   // ------------------------------------------------------------------ win
   function win() {
     S.over = true; S.lock = true;
-    showHand(null); bv.clearHint();
+    showHand(null); bv.clearHint(); setRule(null);
     var stars = S.tutorial ? 3 : S.continued ? 1 : Math.max(1, S.hearts);
     setTimeout(function () {
       bv.winWave();
@@ -345,6 +383,7 @@
     init: function () {
       bv = new BoardView($('board'), { onTap: onTap, onDrag: onDrag, onDragEnd: onDragEnd });
       Store.CFG.BOOSTERS.forEach(function (id) { $('b-' + id).addEventListener('click', function () { useBooster(id); }); });
+      document.querySelectorAll('#g-rules .rulecard').forEach(function (el) { BoardView.drawRuleIcon(el.querySelector('canvas'), el.getAttribute('data-r'), 34); });
       $('g-pause').addEventListener('click', function () { if (S && !S.over) { Snd.play('tap'); Game.pause(); UI.showPause(); } });
       $('g-bubble').addEventListener('click', function () { if (!S || !S.tutorial) bubble(null); });
       window.addEventListener('resize', function () { if (S) { layout(); if (S.tutorial && !S.over) setTimeout(coach, 50); } });
@@ -361,10 +400,10 @@
         mode: mode, index: index, pups: new Uint8Array(B.n * B.n), marks: new Uint8Array(B.n * B.n),
         hearts: Store.CFG.HEARTS, maxHearts: Store.CFG.HEARTS, time: 0, lastTap: null, drag: null,
         over: false, lock: false, paused: false, continued: false, mistakes: 0, boostersUsed: 0,
-        tutorial: mode === 'level' && index === 0 && !Store.data.tut.level1
+        tutorial: mode === 'level' && index === 0 && !Store.data.tut.level1, tutStage: 'place1'
       };
       bv.setLevel({ n: B.n, reg: B.reg, colors: B.colors, breeds: B.breeds, patterns: Store.data.settings.patterns });
-      renderTitle(); renderHearts(); renderTime(); renderBoosters(); bubble(null); showHand(null); active();
+      renderTitle(); renderHearts(); renderPups(); renderRules(); setRule(null); renderTime(); renderBoosters(); bubble(null); showHand(null); active();
       $('g-hearts').classList.toggle('tut', S.tutorial);
       layout();
       bv.start();
@@ -398,7 +437,7 @@
       });
     },
     leave: function () { bv.stop(); showHand(null); S = null; },
-    refreshHud: function () { if (S) { renderBoosters(); renderTitle(); bv.setPatterns(Store.data.settings.patterns); } },
+    refreshHud: function () { if (S) { renderBoosters(); renderTitle(); renderRules(); bv.setPatterns(Store.data.settings.patterns); } },
     session: function () { return S; },
     // test hooks (used by tools/e2e.mjs)
     _debug: function () { return { S: S, B: B, bv: bv }; },
