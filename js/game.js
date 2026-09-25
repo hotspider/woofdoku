@@ -9,7 +9,7 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var S, B, bv, pb;          // session, board spec, BoardView, Puzzle.Board
-  var timer = 0, bubbleTimer = 0;
+  var timer = 0, bubbleTimer = 0, ruleTimer = 0;
   var DOUBLE = 0.34;         // double-tap window (s)
 
   function t() { return performance.now() / 1000; }
@@ -54,17 +54,30 @@
   function renderPups(justGot) {
     var el = $('g-pups'), n = B.n, h = '', has = {};
     for (var i = 0; i < S.pups.length; i++) if (S.pups[i]) has[B.reg[i]] = 1;
-    el.style.setProperty('--pw', (n <= 6 ? 26 : n <= 8 ? 22 : 19) + 'px');
+    el.style.setProperty('--pw', pupW() + 'px');
     for (var g = 0; g < n; g++) h += '<img alt="" class="' + (has[g] ? (g === justGot ? 'got' : '') : 'off') + '" src="' + Assets.url('pup/' + B.breeds[g] + '_idle') + '">';
     el.innerHTML = h;
   }
+  // pup icons in the progress bar: bigger on roomy screens as long as the hearts still fit beside them
+  function pupW() {
+    var n = B.n, w = n <= 6 ? 26 : n <= 8 ? 22 : 19;
+    if (!$('screen-game').classList.contains('roomy')) return w;
+    var fit = Math.floor(($('app').clientWidth - 20 - 150 - 8 - 20) / n) + 2;
+    return Math.min(Math.round(w * 1.15), Math.max(w, fit));
+  }
+  // rule cards: always on the first levels; later on only when the screen has room for them (see layout)
   function renderRules() {
-    var on = S.mode === 'level' && S.index < 3;
-    $('g-rules').classList.toggle('on', on);
     ['color', 'line', 'touch'].forEach(function (r) { document.querySelector('#g-rules [data-r="' + r + '"] span').textContent = T('rc_' + r); });
   }
   function setRule(r) {
+    clearTimeout(ruleTimer);
     document.querySelectorAll('#g-rules .rulecard').forEach(function (el) { el.classList.toggle('on', el.getAttribute('data-r') === r); });
+  }
+  // a broken rule lights up its card for a moment
+  function flashRule(r) {
+    if (S.tutorial || !$('g-rules').classList.contains('on')) return;
+    setRule(r);
+    ruleTimer = setTimeout(function () { setRule(null); }, 1500);
   }
   function fmtTime(s) { s = Math.floor(s); var m = Math.floor(s / 60); return (m < 10 ? '0' : '') + m + ':' + (s % 60 < 10 ? '0' : '') + (s % 60); }
   function renderTime() { $('g-time').textContent = fmtTime(S.time); }
@@ -85,7 +98,7 @@
     for (var k = 1; k <= 5; k++) d += '<i class="' + (k <= B.diff ? 'on' : '') + '"></i>';
     $('g-diff').innerHTML = d;
     $('g-diff').title = T('diff_' + B.diff);
-    $('g-difflbl').textContent = (B.boss ? T('boss') + ' · ' : '') + T('diff_' + B.diff);
+    $('g-difflbl').textContent = (B.boss ? T('boss_s') + ' · ' : '') + T('diff_' + B.diff);
     $('screen-game').classList.toggle('boss', B.boss);
     $('g-ribbon').className = 'ribbon ' + (S.mode === 'daily' ? 'purple' : B.boss ? 'pink' : 'blue');
   }
@@ -93,24 +106,55 @@
     o = o || {};
     var el = $('g-bubble');
     clearTimeout(bubbleTimer);
-    if (!text) { el.classList.remove('on'); return; }
+    if (!text) { el.classList.remove('on'); underBubble(); return; }
     el.querySelector('.txt').textContent = text;
     el.querySelector('img').src = Assets.url(o.face || 'pup/corgi_idle');
     el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
-    if (o.ms) bubbleTimer = setTimeout(function () { el.classList.remove('on'); }, o.ms);
+    underBubble();
+    if (o.ms) bubbleTimer = setTimeout(function () { el.classList.remove('on'); underBubble(); }, o.ms);
+  }
+  // on smaller screens the bubble floats over the hearts / rule rows: those fade out while it is up
+  function underBubble() {
+    var el = $('g-bubble'), on = el.classList.contains('on');
+    var top = $('g-mid').getBoundingClientRect().top + el.offsetTop, bot = top + el.offsetHeight;
+    ['.heartbar', '#g-rules'].forEach(function (s) {
+      var row = document.querySelector('#g-top ' + s), r = row.getBoundingClientRect();
+      row.classList.toggle('under', on && r.height > 0 && r.bottom > top + 2 && r.top < bot);
+    });
   }
 
+  // Vertical layout: HUD on top, booster shelf at the bottom, the board as big as the width allows and
+  // the space left over split evenly above and below it. The guide bubble floats just above the board:
+  // it may cover the hearts / rule rows for a moment, but never a tile, the pause row or (during the
+  // first-time guide) the rule cards it talks about. Tall phones get the roomy HUD (bigger hearts and
+  // boosters, rule cards on every level) instead of empty bands.
+  function fitBoard(W, H) {
+    var g = $('g-top'), row = g.querySelector('.g-row');
+    var top = g.offsetHeight, bot = $('g-bottom').offsetHeight, M = H - top - bot;
+    var floor = S.tutorial ? top : row.offsetTop + row.offsetHeight;
+    var need = Math.max(0, floor + 4 + (S.tutorial ? 88 : 72) + 6 - top);
+    var size = Math.max(180, Math.min(W - 16, M - Math.max(need, 10) - 10, 600));
+    return { size: size, M: M, above: Math.max(need, Math.round((M - size) / 2)) };
+  }
   function layout() {
     if (!S) return;
-    var app = $('app'), W = app.clientWidth, H = app.clientHeight;
-    var top = $('g-top').getBoundingClientRect().height, bot = $('g-bottom').getBoundingClientRect().height;
-    // the hint / guide bubble gets its own strip above the board so it never covers a tile
-    var reserve = H <= 600 ? 76 : W < 360 ? 92 : 80;
-    $('g-mid').style.paddingTop = reserve + 'px';
-    var avail = H - top - bot - reserve - 12;
-    var size = Math.max(180, Math.min(W - 20, avail, 560));
-    bv.resize(size);
-    $('g-board').style.width = size + 'px'; $('g-board').style.height = size + 'px';
+    var app = $('app'), W = app.clientWidth, H = app.clientHeight, scr = $('screen-game');
+    var early = S.mode === 'level' && S.index < 3, fit;
+    // roomy HUD → compact HUD with the rule cards → compact HUD: the first one that still gives the board
+    // the full width with ~28 px to spare above and below it. It depends on the screen, not the level.
+    var tiers = [[true, true], [false, true], [false, early]];
+    tiers.some(function (t, k) {
+      scr.classList.toggle('roomy', t[0]);
+      $('g-rules').classList.toggle('on', t[1]);
+      fit = fitBoard(W, H);
+      return k === tiers.length - 1 || fit.M - Math.min(W - 16, 600) >= 56;
+    });
+    bv.resize(fit.size);
+    $('g-board').style.width = fit.size + 'px'; $('g-board').style.height = fit.size + 'px';
+    $('g-mid').style.paddingTop = fit.above + 'px';
+    $('g-bubble').style.bottom = (fit.M - fit.above + 6) + 'px';
+    $('g-pups').style.setProperty('--pw', pupW() + 'px');
+    underBubble();
   }
 
   // ------------------------------------------------------------------ timer
@@ -126,7 +170,10 @@
   // ------------------------------------------------------------------ actions
   // tap = ✕ on / off · double-tap = place a pup · swipe = ✕ many cells
   function setMark(i, v, delay) { S.marks[i] = v; bv.setMark(i, v, delay); }
-  function interact() { active(); if (bv.hintSpec) bv.clearHint(); }
+  function interact() {
+    active(); if (bv.hintSpec) bv.clearHint();
+    if (!S.tutorial && $('g-bubble').classList.contains('on')) bubble(null);
+  }
 
   function toggleMark(i) {
     if (S.pups[i]) { bv.nudge(i); Snd.play('yip', { i: (Math.random() * 6) | 0 }); return null; }
@@ -167,13 +214,11 @@
   }
   function onDragEnd() { if (S && S.drag) { S.drag = null; if (S.tutorial) coachSoon(); } }
 
-  function conflictReason(i, j) {
+  function conflictKind(i, j) {
     var n = B.n, r = (i / n) | 0, c = i % n, rj = (j / n) | 0, cj = j % n;
-    if (r === rj) return T('conflict_row');
-    if (c === cj) return T('conflict_col');
-    if (B.reg[i] === B.reg[j]) return T('conflict_yard');
-    return T('conflict_touch');
+    return r === rj ? 'row' : c === cj ? 'col' : B.reg[i] === B.reg[j] ? 'yard' : 'touch';
   }
+  var KIND_RULE = { row: 'line', col: 'line', yard: 'color', touch: 'touch' };
   function pupCount() { var k = 0; for (var i = 0; i < S.pups.length; i++) k += S.pups[i]; return k; }
 
   // source: 'tap' | 'hint'
@@ -181,8 +226,9 @@
     if (S.pups[i]) { bv.nudge(i); Snd.play('yip', { i: (Math.random() * 6) | 0 }); return; }
     var j = Puzzle.conflictWith(B.n, B.reg, S.pups, i);
     if (j >= 0) {
+      var kind = conflictKind(i, j);
       bv.conflict(i, j); Snd.play('blocked');
-      UI.toast(conflictReason(i, j));
+      UI.toast(T('conflict_' + kind)); flashRule(KIND_RULE[kind]);
       return;
     }
     if (S.marks[i] === 2 && !B.sol[i]) { bv.glowCells([i], 'rgba(255,120,120,0.8)', 0.5); Snd.play('blocked'); UI.toast(T('locked_x')); return; }

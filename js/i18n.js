@@ -14,7 +14,7 @@
       free_coins: 'Free Coins', coins_ready_in: 'Ready in {t}',
       chapter: 'Chapter {n}',
       ch_backyard: 'Sunny Backyard', ch_park: 'Dog Park', ch_beach: 'Beach Day', ch_autumn: 'Autumn Woods', ch_snow: 'Snowy Hills', ch_night: 'Starry Night',
-      locked_chapter: 'Clear Level {n} to unlock', boss: 'Boss Level',
+      locked_chapter: 'Clear Level {n} to unlock', boss: 'Boss Level', boss_s: 'Boss',
       diff_1: 'Easy', diff_2: 'Normal', diff_3: 'Tricky', diff_4: 'Hard', diff_5: 'Expert',
       // rules
       how_to_play: 'How to Play', rule_title: 'Place the pups so that…',
