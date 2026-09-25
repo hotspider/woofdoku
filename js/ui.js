@@ -28,7 +28,7 @@
       ['loading', 'home', 'map', 'game'].forEach(function (s) { $('screen-' + s).classList.toggle('on', s === name); });
       var el = $('screen-' + name);
       el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
-      if (screen === 'game' && name !== 'game') Game.leave();
+      if (screen === 'game' && name !== 'game') { Game.leave(); closeAll(); }
       screen = name;
       Snd.music(name === 'game' ? 'game' : name === 'loading' ? null : 'home');
       if (enter) enter();
@@ -51,10 +51,11 @@
   }
 
   // ------------------------------------------------------------------ coins pill
-  var shownCoins = null;
+  var shownCoins = null, coinsFlying = 0;
   function refreshCoins(animate) {
     var target = Store.data.coins;
     var els = document.querySelectorAll('.coinbar.coins .val');
+    if (!animate && coinsFlying > 0 && shownCoins != null) { els.forEach(function (e) { e.textContent = shownCoins; }); return; }
     if (!animate || shownCoins == null) { shownCoins = target; els.forEach(function (e) { e.textContent = target; }); return; }
     var from = shownCoins, t0 = performance.now();
     shownCoins = target;
@@ -71,7 +72,9 @@
     if (!pill || !from) { refreshCoins(true); return; }
     var to = Fx.center(pill), n = Math.min(10, 3 + Math.floor(amount / 20));
     Snd.play('coins');
-    for (var k = 0; k < n; k++) Fx.fly('icon/coin', { x: from.x + (Math.random() - 0.5) * 40, y: from.y + (Math.random() - 0.5) * 20 }, to, { size: 34, delay: k * 0.06, dur: 0.65, onArrive: k === n - 1 ? function () { refreshCoins(true); Snd.play('coin'); } : function () { Snd.play('coin'); } });
+    coinsFlying++;
+    setTimeout(function () { if (coinsFlying > 0) { coinsFlying--; refreshCoins(true); } }, 3000); // safety if frames are paused
+    for (var k = 0; k < n; k++) Fx.fly('icon/coin', { x: from.x + (Math.random() - 0.5) * 40, y: from.y + (Math.random() - 0.5) * 20 }, to, { size: 34, delay: k * 0.06, dur: 0.65, onArrive: k === n - 1 ? function () { if (coinsFlying > 0) coinsFlying--; refreshCoins(true); Snd.play('coin'); } : function () { Snd.play('coin'); } });
   }
 
   // ------------------------------------------------------------------ modal stack
@@ -104,12 +107,13 @@
       var btn = document.createElement('button');
       btn.className = 'btn ' + (b.cls || 'green');
       btn.innerHTML = b.html || '<span class="st">' + esc(b.label) + '</span>';
-      btn.addEventListener('click', function () { Snd.unlock(); Snd.play('tap'); b.onClick(h, btn); });
+      btn.addEventListener('click', function () { if (h.closed) return; Snd.unlock(); Snd.play('tap'); b.onClick(h, btn); });
       bt.appendChild(btn);
     });
     if (!bt.children.length) bt.remove();
     var x = el.querySelector('.x');
-    if (x) x.addEventListener('click', function () { Snd.play('tap'); if (o.onX) o.onX(h); else h.close(); });
+    h.onX = o.onX;
+    if (x) x.addEventListener('click', function () { if (h.closed || x.style.visibility === 'hidden') return; Snd.play('tap'); if (h.onX) h.onX(h); else h.close(); });
     root.appendChild(el);
     root.classList.add('on');
     stack.push(h);
@@ -178,8 +182,8 @@
   setInterval(function () { if (screen === 'home' && !stack.length) { var b = $('f-free'), fr = freeReadyIn(); b.querySelector('.lbl').textContent = fr > 0 ? fmtMs(fr) : T('free_coins'); var bd = b.querySelector('.badge'); bd.textContent = fr <= 0 ? '+' + C.FREE_COINS : ''; bd.classList.toggle('on', fr <= 0); } }, 1000);
 
   // ------------------------------------------------------------------ level map (winding path, level 1 at the bottom)
-  var CH_PUP = {}; // chapter -> pup unlocked inside it
-  Object.keys(C.PUP_UNLOCK).forEach(function (id) { CH_PUP[chapterOf(C.PUP_UNLOCK[id] - 1)] = id; });
+  var CH_PUP = {}; // chapter -> pups unlocked inside it
+  Object.keys(C.PUP_UNLOCK).forEach(function (id) { var ch = chapterOf(C.PUP_UNLOCK[id] - 1); (CH_PUP[ch] = CH_PUP[ch] || []).push(id); });
   // keep in sync with MAP_DECO in tools/export-assets.mjs
   var MAP_DECO = {
     backyard: ['tree', 'bush', 'flowers', 'doghouse', 'bone', 'ball'], park: ['tree2', 'bench', 'balloon', 'bush', 'flowers', 'frisbee'],
@@ -262,9 +266,9 @@
       var a = ch * C.CHAPTER_SIZE, b = a + C.CHAPTER_SIZE, st = 0, locked = d.level <= a;
       for (k = a + 1; k <= b; k++) st += d.stars[k] | 0;
       // centred in the gap between the previous chapter's last level and this chapter's first
-      var hy = g.H - PAD_B - ch * g.secH - (HEAD - STEP) / 2 - 46, pup = CH_PUP[ch];
+      var hy = g.H - PAD_B - ch * g.secH - (HEAD - STEP) / 2 - 46, pups = CH_PUP[ch] || [];
       html += '<div class="chead" style="top:' + hy + 'px"><div class="ribbon ' + MAP_RIB[ch] + '"><span class="st">' + esc(T('ch_' + C.CHAPTERS[ch])) + '</span>' +
-        (pup ? '<img class="prz" alt="" src="' + url('pup/' + pup + (d.pups.indexOf(pup) >= 0 ? '_joy' : '_locked')) + '">' : '') + '</div>' +
+        (pups.length ? '<span class="przs">' + pups.map(function (pup) { return '<img class="prz" alt="" src="' + url('pup/' + pup + (d.pups.indexOf(pup) >= 0 ? '_joy' : '_locked')) + '">'; }).join('') + '</span>' : '') + '</div>' +
         '<div class="sub">' + esc(T('chapter', { n: ch + 1 })) + ' · <img alt="" src="' + url('icon/star') + '">' + st + ' / ' + (b - a) * 3 + '</div></div>';
       if (locked) {
         var ltop = g.H - PAD_B - (ch + 1) * g.secH - (ch === C.CHAPTERS.length - 1 ? PAD_T : 0);
@@ -322,8 +326,8 @@
       Store.save();
       res.unlocks = Store.checkPupUnlocks();
     } else {
-      var today = Store.today(), ch = d.challenge, first2 = ch.date !== today;
-      var y = new Date(); y.setDate(y.getDate() - 1);
+      var today = r.dayKey || Store.today(), ch = d.challenge, first2 = ch.date !== today;
+      var tp = today.split('-'), y = new Date(+tp[0], +tp[1] - 1, +tp[2] - 1);
       if (first2) { ch.streak = ch.lastDone === Store.today(y) ? ch.streak + 1 : 1; ch.date = today; ch.lastDone = today; }
       res.coins = first2 ? 50 + 10 * Math.min(ch.streak, 7) : 5;
       res.streak = ch.streak;
@@ -359,11 +363,11 @@
         Snd.play('coins');
       });
     } });
-    buttons.push({ cls: 'blue', html: bh('icon/retry', T('retry')), onClick: function (h) { h.onClose = null; h.close(); isLevel ? playLevel(res.index) : goHome(); } });
+    buttons.push({ cls: 'blue', html: bh('icon/retry', T('retry')), onClick: function (h) { h.onClose = null; h.close(); afterWin(res, 'retry'); } });
     buttons.push({ cls: 'green', html: bh(null, isLevel ? T('next') : T('ok')), onClick: function (h) { h.onClose = null; h.close(); afterWin(res); } });
     var h = modal({
       title: isLevel ? T('level_done', { n: res.L }) : T('daily_done'), color: 'green', body: body, buttons: buttons, cls: 'win',
-      onX: function (m) { m.onClose = null; m.close(); afterWin(res, true); }
+      onX: function (m) { m.onClose = null; m.close(); afterWin(res, 'map'); }
     });
     if (!isLevel) h.el.querySelectorAll('.btns .btn.blue').forEach(function (b) { b.remove(); });
     Snd.duck(2.5);
@@ -375,17 +379,19 @@
       }, 350 + k * 330);
     })(k);
   }
-  function afterWin(res, toMap) {
+  // then: 'next' (default) | 'map' | 'retry'
+  function afterWin(res, then) {
     var queue = res.unlocks.slice();
     (function next() {
       if (queue.length) { showUnlock(queue.shift(), next); return; }
       if (res.mode === 'daily') { goHome(); return; }
-      if (toMap || res.L >= C.LEVELS) { goMap(); return; }
+      if (then === 'retry') { playLevel(res.index); return; }
+      if (then === 'map' || res.L >= C.LEVELS) { goMap(); return; }
       playLevel(res.L);
     })();
   }
 
-  function showFail(mode) {
+  function showFail() {
     var body = '<img class="bimg" alt="" src="' + url('mascot/sad') + '"><p>' + esc(T('continue_d')) + '</p>';
     modal({
       title: T('continue_q'), color: 'orange', body: body, close: false, cls: 'fail',
@@ -395,7 +401,7 @@
           refreshCoins(); h.close(); Game.continueRun();
         } },
         { cls: 'purple full', html: bh('icon/ad', T('continue_ad')), onClick: function (h) {
-          Ads.rewarded('continue').then(function (ok) { if (ok) { h.close(); Game.continueRun(); } });
+          Ads.rewarded('continue').then(function (ok) { if (ok && !h.closed) { h.close(); Game.continueRun(); } });
         } },
         { cls: 'orange', html: bh('icon/home', T('home')), onClick: function (h) { h.close(); goHome(); } },
         { cls: 'blue', html: bh('icon/retry', T('retry')), onClick: function (h) { h.close(); Game.restart(); } }
@@ -444,7 +450,7 @@
         Snd.play('tap');
         var a = b.getAttribute('data-a');
         if (a === 'rules') showRules();
-        if (a === 'reset') confirmBox(T('reset_q'), function () { Store.reset(); closeAll(); goHome(); });
+        if (a === 'reset') confirmBox(T('reset_q'), function () { Store.reset(); Snd.setMusic(Store.data.settings.music); Snd.setSfx(Store.data.settings.sfx); shownCoins = null; closeAll(); goHome(); });
       });
     });
     return wrap;
@@ -485,7 +491,7 @@
           Store.addBooster(id, C.BOOSTER_PACK); Snd.play('reward'); refreshCoins(); h.close(); if (done) done();
         } },
         { cls: 'purple full', html: bh('icon/ad', T('watch_ad_1')), onClick: function (h) {
-          Ads.rewarded('booster').then(function (ok) { if (ok) { Store.addBooster(id, 1); Snd.play('reward'); h.close(); if (done) done(); } });
+          Ads.rewarded('booster').then(function (ok) { if (ok && !h.closed) { Store.addBooster(id, 1); Snd.play('reward'); h.close(); if (done) done(); } });
         } }
       ]
     });
@@ -494,11 +500,13 @@
   // ------------------------------------------------------------------ daily gift
   function openGift() {
     var g = Store.data.gift, ready = giftReady(), today = g.day % 7;
+    var gotUntil = ready ? today : (today === 0 ? 7 : today); // claimed today: the cycle may have just wrapped
     var cal = '<div class="cal">' + C.GIFTS.map(function (items, k) {
-      var cls = 'day' + (k === 6 ? ' big' : '') + (k < today ? ' got' : '') + (k === today && ready ? ' today' : '');
+      var cls = 'day' + (k === 6 ? ' big' : '') + (k < gotUntil ? ' got' : '') + (k === today && ready ? ' today' : '');
       return '<div class="' + cls + '"><div class="q">' + esc(T('day_n', { n: k + 1 })) + '</div><div class="it">' + items.map(function (it) { return '<img alt="" src="' + url(it.coins ? 'icon/coin' : 'icon/' + it.booster) + '">'; }).join('') + '</div><div class="q">' + items.map(function (it) { return it.coins ? it.coins : '×' + (it.n || 1); }).join(' ') + '</div></div>';
     }).join('') + '</div>' + (ready ? '' : '<p class="muted">' + esc(T('come_tomorrow')) + '</p>');
     function claim(h, mult) {
+      if (h.closed) return;
       var items = C.GIFTS[today].map(function (it) { return it.coins ? { coins: it.coins * mult } : { booster: it.booster, n: (it.n || 1) * mult }; });
       var from = Fx.center(h.el.querySelector('.day.today') || h.el);
       Store.grant(items);
@@ -571,7 +579,7 @@
     function go() {
       if (spinning) return;
       if (!w.free) { w.free = true; Store.save(); spin(); }
-      else if (w.ads < C.WHEEL_AD_SPINS) Ads.rewarded('wheel').then(function (ok) { if (ok) { w.ads++; Store.save(); spin(); } });
+      else if (w.ads < C.WHEEL_AD_SPINS) Ads.rewarded('wheel').then(function (ok) { if (ok && !h.closed) { w.ads++; Store.save(); spin(); } });
     }
     function spin() {
       spinning = true; btn.disabled = true; h.el.querySelector('.x').style.visibility = 'hidden';
@@ -648,13 +656,14 @@
     d.box -= C.BOX_STARS;
     var bo = C.BOOSTERS[(Math.random() * C.BOOSTERS.length) | 0];
     var items = [{ coins: 100 }, { booster: bo, n: 1 }];
-    if (Math.random() < 0.35) items.push({ booster: C.BOOSTERS[(Math.random() * 3) | 0], n: 1 });
+    if (Math.random() < 0.35) items.push({ booster: C.BOOSTERS[(Math.random() * C.BOOSTERS.length) | 0], n: 1 });
     Store.grant(items);
     Snd.play('chest');
     var h = modal({ title: T('box_title'), color: 'blue', close: false, body: '<div class="glowbox"><img alt="" src="' + url('icon/gift') + '"></div><div class="prizes">' + itemsHtml(items) + '</div>', buttons: [{ cls: 'green full', label: T('ok'), onClick: function (m) { m.close(); } }], onClose: function () { renderHome(); } });
     setTimeout(function () { var p = Fx.center(h.el.querySelector('.glowbox')); Fx.burst(p.x, p.y, { n: 30, shapes: ['star', 'bone', 'paw', 'sparkle'], speed: 340 }); flyCoins(p, 100); }, 300);
   }
-  function freeCoins() {
+  function freeCoins(e) {
+    var srcEl = e && e.currentTarget && e.currentTarget.getBoundingClientRect().width ? e.currentTarget : $('f-free');
     var fr = freeReadyIn();
     if (fr > 0) { toast(T('coins_ready_in', { t: fmtMs(fr) })); return; }
     Ads.rewarded('free_coins').then(function (ok) {
@@ -662,8 +671,7 @@
       Store.data.freeCoinsAt = Date.now() + C.FREE_COINS_COOLDOWN;
       Store.addCoins(C.FREE_COINS);
       Snd.play('reward');
-      var src = $('f-free');
-      flyCoins(Fx.center(src), C.FREE_COINS);
+      flyCoins(Fx.center(srcEl), C.FREE_COINS);
       renderHome();
     });
   }
@@ -702,7 +710,11 @@
     $('g-hand').src = url('icon/paw');
     C.BOOSTERS.forEach(function (id) { var b = $('b-' + id); b.querySelector('.slot img.bi').src = url('icon/' + id); b.querySelector('.slot img.lock').src = url('icon/lock'); });
     // hardware back button / swipe-back on Android: stay inside the game
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && stack.length) { var t = stack[stack.length - 1]; if (t.el.querySelector('.x')) t.close(); } });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !stack.length || document.querySelector('.ad-screen')) return;
+      var x = stack[stack.length - 1].el.querySelector('.x');
+      if (x) x.click();
+    });
   }
 
   window.UI = {

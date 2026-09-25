@@ -72,11 +72,11 @@
           .catch(function () { Assets.failed.push('data/levels.json'); done(); });
       });
       add({ bytes: 30000 }, function (done) {
-        // web font (Latin); Chinese text falls back to the system font
+        // web fonts (Fredoka for text, Lilita One for titles and buttons)
         try {
           if (!document.fonts || !document.fonts.load) return done();
           var t = setTimeout(done, 4000);
-          Promise.all([document.fonts.load('700 20px Fredoka'), document.fonts.load('600 20px Fredoka'), document.fonts.load('500 20px Fredoka')])
+          Promise.all([document.fonts.load('700 20px Fredoka'), document.fonts.load('600 20px Fredoka'), document.fonts.load('500 20px Fredoka'), document.fonts.load('400 20px "Lilita One"')])
             .then(function () { clearTimeout(t); done(); }, function () { clearTimeout(t); done(); });
         } catch (e) { done(); }
       });

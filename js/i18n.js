@@ -30,6 +30,7 @@
       tut_touch: 'Pups can\'t be neighbors — not even diagonally. Mark the glowing tiles around the pup ✕ too!',
       tut_zone: 'This color zone already has its pup. Mark the rest of it ✕!',
       tut_marked: 'Great marking!',
+      tut_wrong: 'Not this one — follow the glowing tile!',
       tut_next: '{unit} has only one open cell left — double-tap it!',
       tut_done: 'Puzzle solved! Every row, column and zone has one happy pup.',
       tip_mark: 'Tip: tap a cell to mark ✕ where no pup can go. Swipe to mark several at once.',

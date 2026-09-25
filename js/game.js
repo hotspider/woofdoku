@@ -104,8 +104,11 @@
     if (!S) return;
     var app = $('app'), W = app.clientWidth, H = app.clientHeight;
     var top = $('g-top').getBoundingClientRect().height, bot = $('g-bottom').getBoundingClientRect().height;
-    var avail = H - top - bot - 70;
-    var size = Math.max(200, Math.min(W - 20, avail, 560));
+    // the hint / guide bubble gets its own strip above the board so it never covers a tile
+    var reserve = H <= 600 ? 76 : W < 360 ? 92 : 80;
+    $('g-mid').style.paddingTop = reserve + 'px';
+    var avail = H - top - bot - reserve - 12;
+    var size = Math.max(180, Math.min(W - 20, avail, 560));
     bv.resize(size);
     $('g-board').style.width = size + 'px'; $('g-board').style.height = size + 'px';
   }
@@ -205,10 +208,11 @@
   function wrong(i) {
     if (S.tutorial) {
       bv.conflict(i, i); Snd.play('blocked');
-      bubble(T('wrong_spot') + ' ' + T('tut_1'), { face: 'pup/corgi_sad' });
+      bubble(T('tut_wrong'), { face: 'pup/corgi_sad' });
       setTimeout(coach, 1600);
       return;
     }
+    var sess = S;
     S.hearts--; S.mistakes++;
     bv.wrongPup(i);
     if (S.marks[i] !== 2) setMark(i, 2, 1.15);
@@ -219,10 +223,10 @@
     Fx.burst(hp.x, hp.y, { n: 10, shapes: ['heart'], colors: ['#ff5b7f', '#ff8fa8'], speed: 200, gravity: 700, life: 0.8, size: 6 });
     $('screen-game').classList.remove('shake'); void $('screen-game').offsetWidth; $('screen-game').classList.add('shake');
     UI.toast(T('wrong_spot'));
-    setTimeout(renderHearts, 600);
+    setTimeout(function () { if (S === sess) renderHearts(); }, 600);
     if (S.hearts <= 0) {
       S.lock = true;
-      setTimeout(function () { if (!S || S.over) return; S.over = true; Snd.play('lose'); UI.showFail(S.mode); }, 1300);
+      setTimeout(function () { if (S !== sess || S.over) return; S.over = true; Snd.play('lose'); UI.showFail(); }, 1300);
     }
   }
 
@@ -265,7 +269,7 @@
         if (S.marks[target]) setMark(target, 0);
         Snd.play('fetch');
         placePup(target, 'hint');
-        bubble(cap(T('h_hint', { unit: unitName(h.unit) })), { face: 'pup/corgi_joy', ms: 3000 });
+        if (!S.over) bubble(cap(T('h_hint', { unit: unitName(h.unit) })), { face: 'pup/corgi_joy', ms: 3000 });
       }, 420);
     });
     return true;
@@ -276,11 +280,11 @@
     var cells = Puzzle.locate(B.n, B.reg, S.pups, S.marks, B.sol, count);
     if (!cells.length) { UI.toast(T('nothing_locate')); Snd.play('blocked'); return false; }
     Snd.play('sweep');
-    var from = Fx.center($('b-locate'));
+    var from = Fx.center($('b-locate')), sess = S;
     cells.forEach(function (q, k) {
       var p = cellPos(q);
       setTimeout(function () {
-        if (!S) return;
+        if (S !== sess || S.over || S.pups[q]) return;
         setMark(q, 2);
         bv.glowCells([q], 'rgba(120,200,255,0.85)', 0.7);
         Fx.ring(p.x, p.y, '#7cd0ff', bv.cellSize() * 0.8, 0.45);
@@ -361,18 +365,20 @@
   function win() {
     S.over = true; S.lock = true;
     showHand(null); bv.clearHint(); setRule(null);
-    var stars = S.tutorial ? 3 : S.continued ? 1 : Math.max(1, S.hearts);
+    var stars = S.tutorial ? 3 : S.continued ? 1 : Math.max(1, S.hearts), sess = S, tut = S.tutorial;
+    bubble(null);
     setTimeout(function () {
+      if (S !== sess) return;
       bv.winWave();
       Snd.play('win'); Snd.duck(3);
       for (var r = 0; r < B.n; r++) (function (r) { setTimeout(function () { Snd.play('yip', { i: r % 6 }); }, 120 + r * 90); })(r);
       var br = $('g-board').getBoundingClientRect(), a = $('app').getBoundingClientRect();
       Fx.confetti(110);
-      Fx.text(br.left - a.left + br.width / 2, br.top - a.top + br.height / 2, S.tutorial ? T('great') : T('pawsome'), { size: 46, life: 1.6, rise: 30, color: '#ffb52e', stroke: '#7a3f12' });
-      if (S.tutorial) bubble(T('tut_done'), { face: 'pup/corgi_joy' });
+      Fx.text(br.left - a.left + br.width / 2, br.top - a.top + br.height / 2, tut ? T('great') : T('pawsome'), { size: 46, life: 1.6, rise: 30, color: '#ffb52e', stroke: '#7a3f12' });
+      if (tut) bubble(T('tut_done'), { face: 'pup/corgi_joy' });
     }, 350);
-    var result = UI.finishPuzzle({ mode: S.mode, index: S.index, stars: stars, time: S.time, boss: B.boss, hearts: S.hearts, mistakes: S.mistakes });
-    setTimeout(function () { UI.showWin(result); }, 2000);
+    var result = UI.finishPuzzle({ mode: S.mode, index: S.index, stars: stars, time: S.time, boss: B.boss, hearts: S.hearts, mistakes: S.mistakes, dayKey: S.dayKey });
+    setTimeout(function () { if (S === sess) UI.showWin(result); }, 2000);
   }
 
   // ------------------------------------------------------------------ session
@@ -381,7 +387,7 @@
       bv = new BoardView($('board'), { onTap: onTap, onDrag: onDrag, onDragEnd: onDragEnd });
       Store.CFG.BOOSTERS.forEach(function (id) { $('b-' + id).addEventListener('click', function () { useBooster(id); }); });
       document.querySelectorAll('#g-rules .rulecard').forEach(function (el) { BoardView.drawRuleIcon(el.querySelector('canvas'), el.getAttribute('data-r'), 34); });
-      $('g-pause').addEventListener('click', function () { if (S && !S.over) { Snd.play('tap'); Game.pause(); UI.showPause(); } });
+      $('g-pause').addEventListener('click', function () { if (S && !S.over && !S.lock && !UI.modalOpen()) { Snd.play('tap'); Game.pause(); UI.showPause(); } });
       $('g-bubble').addEventListener('click', function () { if (!S || !S.tutorial) bubble(null); });
       window.addEventListener('resize', function () { if (S) { layout(); if (S.tutorial && !S.over) setTimeout(coach, 50); } });
       timer = setInterval(tick, 1000);
@@ -397,7 +403,8 @@
         mode: mode, index: index, pups: new Uint8Array(B.n * B.n), marks: new Uint8Array(B.n * B.n),
         hearts: Store.CFG.HEARTS, maxHearts: Store.CFG.HEARTS, time: 0, lastTap: null, drag: null,
         over: false, lock: false, paused: false, continued: false, mistakes: 0, boostersUsed: 0,
-        tutorial: mode === 'level' && index === 0 && !Store.data.tut.level1, tutStage: 'place1'
+        tutorial: mode === 'level' && index === 0 && !Store.data.tut.level1, tutStage: 'place1',
+        dayKey: mode === 'daily' ? Store.today() : null
       };
       bv.setLevel({ n: B.n, reg: B.reg, colors: B.colors, breeds: B.breeds });
       renderTitle(); renderHearts(); renderPups(); renderRules(); setRule(null); renderTime(); renderBoosters(); bubble(null); showHand(null); active();
@@ -421,7 +428,6 @@
         }
       }, 450);
     },
-    isTutorial: function () { return !!(S && S.tutorial); },
     pause: function () { if (S) S.paused = true; },
     resume: function () { if (S) S.paused = false; },
     restart: function () { if (S) Game.start({ mode: S.mode, index: S.index }); },
@@ -434,7 +440,6 @@
       });
     },
     leave: function () { bv.stop(); showHand(null); S = null; },
-    refreshHud: function () { if (S) { renderBoosters(); renderTitle(); renderRules(); } },
     session: function () { return S; },
     // test hooks (used by tools/e2e.mjs)
     _debug: function () { return { S: S, B: B, bv: bv }; },

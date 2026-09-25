@@ -188,7 +188,6 @@
     this.joy = now(); this.locked = true;
     return new Promise(function (res) { setTimeout(res, 1500); });
   };
-  P.resetJoy = function () { this.joy = null; };
 
   // ---- input
   P._pos = function (e) { var r = this.cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };

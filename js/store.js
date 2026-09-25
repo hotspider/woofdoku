@@ -55,7 +55,7 @@
       wheel: { date: '', free: false, ads: 0 },
       challenge: { date: '', streak: 0, lastDone: '' },
       box: 0,
-      tut: { rules: false, level1: false, tipMark: false, tipMode: false },
+      tut: { level1: false, tipMark: false },
       freeCoinsAt: 0,
       stats: { solved: 0, perfect: 0, pups: 0, hints: 0 }
     };
@@ -83,6 +83,9 @@
       d.boosterIntro = {};
     }
     ['tapMode', 'automark', 'vibrate', 'patterns', 'lang'].forEach(function (k) { delete d.settings[k]; });
+    ['rules', 'tipMode'].forEach(function (k) { delete d.tut[k]; });
+    // a booster's free starter pack is only for players who reach its unlock level now
+    CFG.BOOSTERS.forEach(function (b) { if (d.level > CFG.BOOSTER_UNLOCK[b]) d.boosterIntro[b] = true; });
     CFG.BOOSTERS.forEach(function (b) { d.boosters[b] = Math.max(0, d.boosters[b] | 0); });
     if (!Array.isArray(d.pups)) d.pups = CFG.STARTER_PUPS.slice();
     return d;

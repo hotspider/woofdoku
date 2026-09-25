@@ -18,9 +18,8 @@ var Snd = (function () {
     place: { max: 1, win: 0.08, poly: 2, pri: 1 }, yip: { max: 1, win: 0.08, gap: 0.06, pr: 0.03, poly: 3, pri: 1 },
     progress: { max: 1, win: 0.08, poly: 2, pri: 1 },
     wrong: { max: 1, win: 0.3, poly: 1, pri: 1 }, heart_break: { max: 1, win: 0.3, poly: 1, pri: 1 }, blocked: { max: 1, win: 0.25, poly: 1, pri: 1 },
-    automark: { max: 1, win: 0.15, poly: 2 },
     hint: { max: 1, win: 0.3, poly: 1, pri: 1 }, fetch: { max: 1, win: 0.3, poly: 1, pri: 1 }, sweep: { max: 1, win: 0.3, poly: 1, pri: 1 },
-    undo: { max: 1, win: 0.08, pr: 0.03, poly: 2, pri: 1 }, clear: { max: 1, win: 0.2, poly: 1, pri: 1 },
+   
     level_start: { max: 1, win: 0.4, poly: 1, pri: 1 }, win: { max: 1, win: 0.5, poly: 1, pri: 1 }, lose: { max: 1, win: 0.5, poly: 1, pri: 1 },
     star: { max: 1, win: 0.1, poly: 3, pri: 1 }, coin: { max: 3, win: 0.06, gap: 0.045, pr: 0.03, poly: 5 }, coins: { max: 1, win: 0.3, poly: 1, pri: 1 },
     popup: { max: 1, win: 0.1, pr: 0.03, poly: 2, pri: 1 }, close: { max: 1, win: 0.1, pr: 0.03, poly: 2, pri: 1 }, whoosh: { max: 1, win: 0.2, poly: 1 },

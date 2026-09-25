@@ -109,7 +109,7 @@
       var tk = p.t / p.life, pop = tk < 0.12 ? 0.5 + tk / 0.12 * 0.7 : tk < 0.22 ? 1.2 - (tk - 0.12) / 0.1 * 0.2 : 1;
       x.save(); x.translate(p.x, p.y - tk * p.rise); x.scale(pop, pop);
       x.globalAlpha = tk > 0.75 ? (1 - tk) / 0.25 : 1;
-      x.font = '700 ' + p.size + 'px Fredoka, "PingFang SC", "Microsoft YaHei", sans-serif';
+      x.font = '700 ' + p.size + 'px Fredoka, sans-serif';
       x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
       x.lineWidth = p.size * 0.28; x.strokeStyle = '#ffffff'; x.strokeText(p.str, 0, 0);
       x.lineWidth = p.size * 0.12; x.strokeStyle = p.stroke; x.strokeText(p.str, 0, 0);
